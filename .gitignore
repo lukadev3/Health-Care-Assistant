@@ -15,5 +15,6 @@ venv.bak/
 
 pdf_files/
 .env
+.venv
 config/
 

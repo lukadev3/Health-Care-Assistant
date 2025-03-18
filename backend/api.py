@@ -1,5 +1,4 @@
 import os
-import sqlite3
 from flask import Flask, request, jsonify
 from rag import handle_upload, query_tools, load_tools
 from database import init_db, insert_pdf_file, get_all_files

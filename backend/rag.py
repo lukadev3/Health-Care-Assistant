@@ -79,12 +79,10 @@ def load_tools(file_path: str, name: str):
 
     name = os.path.splitext(name)[0]
 
-    full_text = extract_text_from_pdf(file_path)
-    nodes = get_nodes(full_text)
-
     chroma_collection = chroma_client.get_or_create_collection(name)
     vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
     vector_index = VectorStoreIndex.from_vector_store(vector_store)
+    nodes = vector_index.docstore.docs.values()
 
     vector_query_tool, summary_tool = make_tools(vector_index, name, nodes)
     return vector_query_tool, summary_tool

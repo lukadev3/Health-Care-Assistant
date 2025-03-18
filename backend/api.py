@@ -1,7 +1,7 @@
 import os
 import sqlite3
 from flask import Flask, request, jsonify
-from rag import handle_upload, query_tools
+from rag import handle_upload, query_tools, load_tools
 from database import init_db, insert_pdf_file, get_all_files
 from dotenv import load_dotenv
 
@@ -17,7 +17,7 @@ tools = []
 
 files = get_all_files()
 for filename, filepath in files:
-    vector_query_tool, summary_tool = handle_upload(filepath, filename)
+    vector_query_tool, summary_tool = load_tools(filepath, filename)
     tools.append(vector_query_tool)
     tools.append(summary_tool)
 

@@ -16,7 +16,7 @@ tools = []
 
 files = get_all_files()
 for filename, filepath in files:
-    vector_query_tool, summary_tool = load_tools(filepath, filename)
+    vector_query_tool, summary_tool = load_tools(filename)
     tools.append(vector_query_tool)
     tools.append(summary_tool)
 

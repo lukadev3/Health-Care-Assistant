@@ -1,14 +1,13 @@
 import os
 from flask import Flask, request, jsonify
-from rag import handle_upload, query_tools, load_tools
-from database import init_db, insert_pdf_file, get_all_files
+from rag import handle_upload, query_tools, load_tools, delete_document
+from database import init_db, insert_pdf_file, get_all_files, delete_pdf_file
 from dotenv import load_dotenv
 
 load_dotenv()
 
 init_db()  
 
-db_path = os.getenv("DB_PATH")
 folder_path = os.getenv("FOLDER_PATH")
 app = Flask(__name__)
 
@@ -19,11 +18,6 @@ for filename, filepath in files:
     vector_query_tool, summary_tool = load_tools(filename)
     tools.append(vector_query_tool)
     tools.append(summary_tool)
-
-
-@app.route("/", methods=["GET"])
-def home():
-    return "Hello, World!"
 
 @app.route("/upload", methods=["POST"])
 def upload_pdf():
@@ -47,6 +41,21 @@ def upload_pdf():
     tools.append(summary_tool)
 
     return jsonify({"message": f"PDF {filename} uploaded successfully!"})
+
+@app.route("/delete", methods=["DELETE"])
+def delete_pdf():
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+    
+    file = request.files["file"]
+    filename = file.filename
+    filename = os.path.splitext(filename)[0]
+    
+    delete_pdf_file(filename)
+    delete_document(filename)
+
+    return jsonify({"message": f"PDF {filename} deleted successfully!"})
+
 
 @app.route("/query", methods=["GET"])
 def query_pdf():

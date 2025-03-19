@@ -9,7 +9,7 @@ from llama_index.vector_stores.chroma import ChromaVectorStore
 from llama_index.core import Settings
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from dotenv import load_dotenv
-from utils import clean_text, extract_text_from_pdf, make_tools
+from utils import extract_text_from_pdf, make_tools
 
 load_dotenv()
 

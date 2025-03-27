@@ -53,6 +53,12 @@ def delete_pdf():
     
     delete_pdf_file(filename)
     delete_document(filename)
+    global tools
+    tools = [
+        tool for tool in tools if not (
+            tool.metadata.name == f"vector_tool_{filename}" or tool.metadata.name == f"summary_tool_{filename}"
+        )
+    ]
 
     return jsonify({"message": f"PDF {filename} deleted successfully!"})
 

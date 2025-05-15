@@ -9,3 +9,6 @@ llama-index-embeddings-ollama
 llama-index-llms-ollama
 ollama
 transformers
+hypercorn
+quart
+sentence-transformers

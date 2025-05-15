@@ -1,0 +1,8 @@
+Kada se radi preko RouterQueryEngine podrzava streaming, daje detaljnije odgovore ali ne moze da poziva vise toolova za razlicite dokumente.
+Kada se radi preko SubQuestionQueryEngine daje detaljne odgovore, bira dobro toolove za razlicite dokumente ali ne podrzava streaming odgovora.
+Agent mi brlja uvek odgovore, ne podrzava streaming.
+Trenutno koristim llama3.2 model za razbijanje pitanja na podpitanja da bih slao u RouterQueryEngine, da vidim sa profesorom da li da odradim FineTuning i da specijalizujem model
+da mi razbija pitanja na manja pitanja i da ih saljem RouterQueryEngine.
+Razmisli o dodavanju tabele za skladistenje cetova i da ih ucitam i posaljes agentu da ima uvid u istoriju konverzacije
+Razmisli o koriscenju chat engine u mesto query engine koji ce da pamti cet u RAM, prethodni pristup koristi prompt engineering i promptovi mogu da budu veliki ali ima trajan uvid u
+sve konverzacije dok se iste ne obrisu, ovaj drugi pristup ima samo pristup konverzaciji dok je pokrenuta aplikacija, posle se brise

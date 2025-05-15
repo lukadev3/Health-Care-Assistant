@@ -35,18 +35,27 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             filename TEXT NOT NULL,
             filepath TEXT NOT NULL,
+            index_id TEXT NOT NULL,
             uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
 
-def insert_pdf_file(filename, filepath):
+def insert_pdf_file(filename, filepath, index_id):
     db = DatabaseSingleton()
-    db.execute("INSERT INTO pdf_files (filename, filepath) VALUES (?, ?)", (filename, filepath))
+    db.execute("INSERT INTO pdf_files (filename, filepath, index_id) VALUES (?, ?, ?)", (filename, filepath, index_id))
 
 def delete_pdf_file(filename):
     db = DatabaseSingleton()
-    db.execute("DELETE FROM pdf_files WHERE filename = ?", (filename,))
+    db.execute("DELETE FROM pdf_files WHERE filename = ?", (filename, ))
+
+def get_file(filename):
+    db = DatabaseSingleton()
+    result = db.fetchall("SELECT filename, filepath, index_id FROM pdf_files WHERE filename = ?", (filename, ))
+    filename, filepath, index_id = result[0]
+    return filename, filepath, index_id
 
 def get_all_files():
     db = DatabaseSingleton()
-    return db.fetchall("SELECT filename, filepath FROM pdf_files")
+    rows = db.fetchall("SELECT * FROM pdf_files")
+    columns = ['id', 'filename', 'filepath', 'index_id', 'uploaded_at']
+    return [dict(zip(columns, row)) for row in rows]

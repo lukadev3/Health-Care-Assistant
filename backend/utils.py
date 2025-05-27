@@ -44,8 +44,7 @@ def extract_text_from_pdf(file_path: str) -> str:
 
     return " ".join(full_text)
 
-def make_tool(automerging_index: AutoMergingRetriever, name: str, similarity_top_k=12, top_n=6) -> QueryEngineTool:
-
+def make_tool(automerging_index: AutoMergingRetriever, name: str, description: str, similarity_top_k=6, top_n=2) -> QueryEngineTool:
     """Making QueryEngineTool from index."""
 
     base_retriever = automerging_index.as_retriever(similarity_top_k=similarity_top_k)
@@ -55,7 +54,7 @@ def make_tool(automerging_index: AutoMergingRetriever, name: str, similarity_top
     rerank = SentenceTransformerRerank(top_n=top_n)
 
     query_engine = RetrieverQueryEngine.from_args(
-        retriever, node_postprocessors=[rerank], streaming=True
+        retriever, node_postprocessors=[rerank], use_async=True
     )
 
     tool = QueryEngineTool(

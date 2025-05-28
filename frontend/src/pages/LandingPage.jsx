@@ -8,8 +8,8 @@ export default function App() {
   return (
     <AnimatedPage>
       <div id='content'>
-        <h1>Welcome to Documentation Manager!</h1>
-        <h2>Your smart assistant for better decisions.</h2>
+        <h1>Welcome to Health-Care Assistant!</h1>
+        <h2>AI-Powered Assistant for Smarter Patient Care.</h2>
         <button onClick={() => navigate("/main")}>Start</button>
       </div>
     </AnimatedPage>

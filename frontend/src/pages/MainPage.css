@@ -36,7 +36,7 @@ ul {
   padding: 6px 10px;
   font-size: 13px;
 }
-/* Лева страна — Историја четова */
+
 .sidebar {
   width: 15%;
   background-color: #f0f0f0;
@@ -46,7 +46,6 @@ ul {
   overflow-y: auto;
 }
 
-/* Средина — Централни чет */
 .chat-center {
   width: 70%;
   background-color: #fff;
@@ -133,7 +132,6 @@ ul {
   background-color: #0056b3;
 }
 
-/* Десна страна — Преглед фајлова */
 .file-panel {
   width: 15%;
   background-color: #f9f9f9;
@@ -142,3 +140,339 @@ ul {
   box-sizing: border-box;
   overflow-y: auto;
 }
+
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(255, 255, 255, 0.75);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+
+.spinner {
+  border: 6px solid #ccc;
+  border-top: 6px solid #333;
+  border-radius: 50%;
+  width: 60px;
+  height: 60px;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.upload-message {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background-color: #d1e7dd;
+  color: #0f5132;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-weight: 500;
+  z-index: 10000;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: opacity 1s ease-out;
+  opacity: 1;
+}
+
+.upload-message.success {
+  background-color: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+.upload-message.error {
+  background-color: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+
+.upload-message.fade-out {
+  opacity: 0;
+}
+
+.close-button {
+  background: none;
+  border: none;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+  color: #0f5132;
+  padding: 0;
+  margin: 0;
+  line-height: 1;
+}
+
+.file-link {
+  color: black;
+  text-decoration: none;
+  position: relative;
+  transition: color 0.2s ease-in-out;
+}
+
+.file-link::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  width: 100%;
+  height: 1px;
+  background-color: #666; 
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.2s ease-in-out;
+}
+
+.file-link:hover {
+  color: #555; 
+}
+
+.file-link:hover::after {
+  transform: scaleX(1);
+}
+
+.typing-indicator {
+  display: flex;
+  align-items: center;
+  height: 24px;
+  gap: 4px;
+  margin: 5px 0;
+}
+
+.typing-indicator .dot {
+  width: 8px;
+  height: 8px;
+  background-color: #aaa;
+  border-radius: 50%;
+  animation: blink 1.4s infinite both;
+}
+
+.typing-indicator .dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-indicator .dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes blink {
+  0%,
+  80%,
+  100% {
+    transform: scale(0.8);
+    opacity: 0.4;
+  }
+  40% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+}
+
+.file-item {
+  position: relative;
+  margin-bottom: 10px;
+  padding-right: 10px; 
+}
+
+.file-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.chat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.chat-name {
+  flex-grow: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: 10px;
+}
+
+.file-options-trigger,
+.chat-options-trigger {
+  cursor: pointer;
+  font-size: 20px;
+  padding: 0 8px; 
+  user-select: none;
+  border-radius: 4px;
+  transition: background 0.2s;
+  flex-shrink: 0;
+  margin-left: 10px; 
+}
+
+.file-options-trigger:hover,
+.chat-options-trigger:hover {
+  background-color: #f0f0f0;
+}
+
+.file-options-dropdown,
+.chat-options-dropdown {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  margin-top: 2px; 
+  background-color: white;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  z-index: 1;
+  min-width: 100px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.chat-history li {
+  position: relative;
+  padding: 10px 15px 10px 15px;
+  cursor: pointer;
+  border-bottom: 1px solid #eee;
+}
+
+.chat-history li:hover {
+  background-color: #f5f5f5;
+}
+
+.chat-history li.active {
+  background-color: #e0e0e0;
+  font-weight: bold;
+}
+
+.dropdown-option {
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.dropdown-option:hover {
+  background-color: #eee;
+}
+
+.delete-confirm-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background-color: #fff;
+  padding: 20px 30px;
+  border-radius: 8px;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.25);
+  text-align: center;
+}
+
+.modal-content input{
+  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  width: 400px;
+  height: 50px;
+}
+
+.modal-buttons {
+  margin-top: 20px;
+  display: flex;
+  gap: 15px;
+  justify-content: center;
+}
+
+.yes-button, .cancel-button, .create-button {
+  padding: 8px 20px;
+  border: none;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.create-button{
+  background-color: #007bff;
+  color: white;
+}
+
+.yes-button {
+  background-color: #d9534f;
+  color: white;
+}
+
+.cancel-button {
+  background-color: #ccc;
+  color: black;
+}
+
+.chat-history {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.chat-history li {
+  padding: 10px 15px;
+  cursor: pointer;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.chat-history li:hover {
+  background-color: #f5f5f5;
+}
+
+.chat-history li.active {
+  background-color: #e0e0e0;
+  font-weight: bold;
+}
+
+.delete-chat-button {
+  background: none;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  font-size: 1.2rem;
+  padding: 0 5px;
+}
+
+.delete-chat-button:hover {
+  color: #dc3545;
+}
+
+.empty-chat {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  color: #666;
+}
+
+.empty-chat h2 {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+}
+
+.empty-chat p {
+  font-size: 1rem;
+  color: #888;
+}
+

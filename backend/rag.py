@@ -12,6 +12,8 @@ from llama_index.core.query_engine import RouterQueryEngine, SubQuestionQueryEng
 from llama_index.core.selectors import LLMMultiSelector
 from llama_index.core.tools import QueryEngineTool
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+from llama_index.core.chat_engine.condense_question import CondenseQuestionChatEngine
+from llama_index.core.memory import ChatMemoryBuffer
 import logging
 from llama_index.core import load_index_from_storage
 from dotenv import load_dotenv
@@ -53,6 +55,8 @@ def handle_upload(file_path: str, name: str) -> QueryEngineTool:
     full_text = extract_text_from_pdf(file_path)
     cleaned_text = clean_text(full_text)
 
+    #print(file_path, name)
+
     #documents = SimpleDirectoryReader(input_files=[file_path]).load_data()
     #document = Document(text="\n\n".join([doc.text for doc in documents]))
     document = Document(text=cleaned_text)
@@ -68,7 +72,7 @@ def handle_upload(file_path: str, name: str) -> QueryEngineTool:
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
     automerging_index = VectorStoreIndex(leaf_nodes, storage_context=storage_context, use_async=True)
-    summary_index = SummaryIndex(leaf_nodes)
+    summary_index = SummaryIndex.from_documents([document])
     storage_context.docstore.add_documents(nodes)
     storage_context.persist(persist_dir=f"{STORAGE_CONTEXT_PATH}/{name}")
 
@@ -78,7 +82,7 @@ def handle_upload(file_path: str, name: str) -> QueryEngineTool:
 
     return make_tool(automerging_index, name, str(description)), str(description)
 
-def query_document(query: str, tools: list):
+def query_document(query: str, tools: list, chat_history: list[tuple[str, str]]) -> str:
 
     """Answer the query using SubQuestionQueryEngine with multiple tools."""
 
@@ -100,20 +104,28 @@ def query_document(query: str, tools: list):
         
         "✅ If there is additional information from the tools that might help the user ask a better question or understand the product more deeply, "
         "politely ask the user if they would like to hear about it.\n\n"
-
-        f"User query: {query}"
     )  
 
     try:
-        query_engine = SubQuestionQueryEngine.from_defaults(
-            query_engine_tools=tools
+        sub_engine = SubQuestionQueryEngine.from_defaults(query_engine_tools=tools)
+
+        memory = ChatMemoryBuffer.from_defaults()
+        for user_msg, bot_msg in chat_history:
+            memory.put(user_msg, bot_msg)
+
+        chat_engine = CondenseQuestionChatEngine.from_defaults(
+            query_engine=sub_engine,
+            memory=memory,
         )
-        response = query_engine.query(prompt)
-        return str(response)
-        
+
+        response = chat_engine.chat(query)
+        return response.response
+
     except Exception as e:
-        return ("⚠️ I encountered an error processing your request. "
-               "Please try rephrasing your question or ask about a different topic.")
+        return (
+            "⚠️ I encountered an error processing your request. "
+            f"Please try rephrasing your question or ask about a different topic: {e}"
+        )
     
 def delete_document(name: str):
 

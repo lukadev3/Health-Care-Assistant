@@ -54,14 +54,14 @@ def make_tool(automerging_index: AutoMergingRetriever, name: str, description: s
     rerank = SentenceTransformerRerank(top_n=top_n)
 
     query_engine = RetrieverQueryEngine.from_args(
-        retriever, node_postprocessors=[rerank], use_async=True
+        retriever, node_postprocessors=[rerank], use_async=True, streaming=True
     )
 
     tool = QueryEngineTool(
         query_engine=query_engine,
         metadata=ToolMetadata(
-            name=name,
-            description=f"Tool for querying {name} data."
+            name=f"{name}_tool",
+            description=description
         )
     )
     return tool

@@ -30,14 +30,75 @@ function MainPage() {
   const [newChatName, setNewChatName] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const [chatToDelete, setChatToDelete] = useState(null);
-  const [chatDropdownIndex, setChatDropdownIndex] = useState(null);
+  const [editingChatId, setEditingChatId] = useState(null);
+  const [editingChatName, setEditingChatName] = useState("");
+  const [openDropdown, setOpenDropdown] = useState({
+    type: null, 
+    index: null
+  });
+
 
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
-  const dropdownRef = useRef(null);
   const chatNameInputRef = useRef(null);
 
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
+
+  const startEditingChat = (chat) => {
+    setEditingChatId(chat.id);
+    setEditingChatName(chat.name || "");
+    setOpenDropdown({ type: null, index: null });
+  };
+
+  const cancelEditingChat = () => {
+    setEditingChatId(null);
+    setEditingChatName("");
+  };
+
+  const saveChatName = async () => {
+    if (!editingChatId) return;
+    
+    const nameToSave = editingChatName.trim() || "Untitled Chat";
+    
+    try {
+      const res = await fetch(`${BACKEND_URL}/chats/${editingChatId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: nameToSave
+        }),
+      });
+
+      if (!res.ok) throw new Error("Failed to rename chat");
+
+      const data = await res.json();
+      const newName = data.chat_name || nameToSave;
+      
+      setChats(prev => prev.map(chat => 
+        chat.id === editingChatId ? { ...chat, name: newName } : chat
+      ));
+      
+      if (selectedChat?.id === editingChatId) {
+        setSelectedChat(prev => prev.name === newName ? prev : { ...prev, name: newName });
+      }
+    } catch (error) {
+      console.error("Error renaming chat:", error);
+      setUploadStatus("error");
+      setUploadMessage("Error renaming chat.");
+      setShowFadeOut(false);
+      
+      setTimeout(() => setShowFadeOut(true), 4000);
+      setTimeout(() => {
+        setUploadMessage("");
+        setShowFadeOut(false);
+      }, 5000);
+    } finally {
+      setEditingChatId(null);
+      setEditingChatName("");
+    }
+  };
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -50,25 +111,39 @@ function MainPage() {
 
   useEffect(() => {
     if (selectedChat) {
-      setChatLoading(true);
-      fetchMessages(selectedChat.id).finally(() => setChatLoading(false));
+      const shouldFetch = messages.length === 0 || 
+                        (messages[0] && messages[0].chatId !== selectedChat.id);
+      
+      if (shouldFetch) {
+        setChatLoading(true);
+        fetchMessages(selectedChat.id).finally(() => setChatLoading(false));
+      }
     } else {
       setMessages([]);
     }
-  }, [selectedChat]);
+  }, [selectedChat?.id]); 
+
+  const handleDropdownToggle = (type, index, e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    
+    if (openDropdown.type === type && openDropdown.index === index) {
+      setOpenDropdown({ type: null, index: null });
+    } else {
+      setOpenDropdown({ type, index });
+    }
+  };
 
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setFileDropdownIndex(null);
-        setChatDropdownIndex(null);
+      if (!event.target.closest('.file-options-dropdown, .chat-options-dropdown') && 
+          !event.target.closest('.file-options-trigger, .chat-options-trigger')) {
+        setOpenDropdown({ type: null, index: null });
       }
     };
 
     document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   const fetchFiles = async () => {
@@ -104,11 +179,11 @@ function MainPage() {
       const data = await res.json();
       
       if (data.messages.length === 0) {
-        setMessages([{ text: "Hello! How can I help you today?", sender: "bot" }]);
+        setMessages([{ text: "Hello! How can I help you today?", sender: "bot", chatId }]);
       } else {
         const formattedMessages = data.messages.flatMap(msg => [
-          { text: msg.usermessage, sender: "user" },
-          { text: msg.botmessage, sender: "bot" }
+          { text: msg.usermessage, sender: "user", chatId },
+          { text: msg.botmessage, sender: "bot", chatId }
         ]);
         setMessages(formattedMessages);
       }
@@ -143,11 +218,23 @@ function MainPage() {
       setSelectedChat(newChat);
       setShowChatNameModal(false);
       setNewChatName("");
+      setUploadStatus("success");
+      setUploadMessage("Chat created successfully.");
+      setTimeout(() => setShowFadeOut(true), 4000);
+      setTimeout(() => {
+        setUploadMessage("");
+        setShowFadeOut(false);
+      }, 5000);
+
     } catch (error) {
       console.error("Error creating chat:", error);
       setUploadStatus("error");
       setUploadMessage("Error creating chat.");
-      setTimeout(() => setUploadMessage(""), 3000);
+      setTimeout(() => setShowFadeOut(true), 4000);
+      setTimeout(() => {
+        setUploadMessage("");
+        setShowFadeOut(false);
+      }, 5000);
     }
   };
 
@@ -167,20 +254,20 @@ function MainPage() {
 
       setUploadStatus("success");
       setUploadMessage("Chat deleted successfully.");
-      setTimeout(() => setShowFadeOut(true), 5000);
+      setTimeout(() => setShowFadeOut(true), 4000);
       setTimeout(() => {
         setUploadMessage("");
         setShowFadeOut(false);
-      }, 6000);
+      }, 5000);
     } catch (error) {
       console.error("Error deleting chat:", error);
       setUploadStatus("error");
       setUploadMessage("Error deleting chat.");
-      setTimeout(() => setShowFadeOut(true), 5000);
+      setTimeout(() => setShowFadeOut(true), 4000);
       setTimeout(() => {
         setUploadMessage("");
         setShowFadeOut(false);
-      }, 6000);
+      }, 5000);
     } finally {
       setChatLoading(false);
       setChatToDelete(null);
@@ -273,21 +360,21 @@ function MainPage() {
       setUploadMessage(data.message || "File uploaded successfully.");
       fetchFiles();
 
-      setTimeout(() => setShowFadeOut(true), 5000);
+      setTimeout(() => setShowFadeOut(true), 4000);
       setTimeout(() => {
         setUploadMessage("");
         setShowFadeOut(false);
-      }, 6000);
+      }, 5000);
     } catch (err) {
       console.error("Error uploading file:", err);
       setUploadStatus("error");
       setUploadMessage("Error uploading file.");
 
-      setTimeout(() => setShowFadeOut(true), 5000);
+      setTimeout(() => setShowFadeOut(true), 4000);
       setTimeout(() => {
         setUploadMessage("");
         setShowFadeOut(false);
-      }, 6000);
+      }, 5000);
     } finally {
       setUploading(false);
     }
@@ -313,21 +400,21 @@ function MainPage() {
       setUploadMessage(data.message || "File deleted successfully.");
       fetchFiles();
 
-      setTimeout(() => setShowFadeOut(true), 5000);
+      setTimeout(() => setShowFadeOut(true), 4000);
       setTimeout(() => {
         setUploadMessage("");
         setShowFadeOut(false);
-      }, 6000);
+      }, 5000);
     } catch (err) {
       console.error("Error deleting file:", err);
       setUploadStatus("error");
       setUploadMessage("Error deleting file.");
 
-      setTimeout(() => setShowFadeOut(true), 5000);
+      setTimeout(() => setShowFadeOut(true), 4000);
       setTimeout(() => {
         setUploadMessage("");
         setShowFadeOut(false);
-      }, 6000);
+      }, 5000);
     } finally {
       setUploading(false);
       setShowDeleteConfirm(false);
@@ -456,29 +543,56 @@ function MainPage() {
           {chats.map((chat, index) => (
             <li
               key={chat.id}
-              className={selectedChat?.id === chat.id ? "active" : "inactive"}
-              onClick={() => setSelectedChat(chat)}
+              className={selectedChat?.id === chat.id ? "active" : ""}
+              onClick={(e) => {
+                if (!e.target.closest('.chat-options-trigger') && 
+                    !e.target.closest('.chat-options-dropdown') &&
+                    !e.target.closest('.chat-name-input')) {
+                  setSelectedChat(chat);
+                }
+              }}
             >
               <div className="chat-row">
-                <span className="chat-name">{chat.name || "Untitled Chat"}</span>
+                {editingChatId === chat.id ? (
+                  <input
+                    type="text"
+                    className="chat-name-input"
+                    value={editingChatName}
+                    onChange={(e) => setEditingChatName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") saveChatName();
+                      if (e.key === "Escape") cancelEditingChat();
+                    }}
+                    onBlur={saveChatName}
+                    autoFocus
+                  />
+                ) : (
+                  <span className="chat-name">{chat.name || "Untitled Chat"}</span>
+                )}
                 <div
                   className="chat-options-trigger"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setChatDropdownIndex(chatDropdownIndex === index ? null : index);
-                  }}
+                  onClick={(e) => handleDropdownToggle('chat', index, e)}
                 >
                   ⋯
                 </div>
               </div>
-              {chatDropdownIndex === index && (
-                <div className="chat-options-dropdown" ref={dropdownRef}>
+              {openDropdown.type === 'chat' && openDropdown.index === index && (
+                <div className="chat-options-dropdown">
                   <div
-                    className="dropdown-option"
+                    className="dropdown-option other-option"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      startEditingChat(chat);
+                    }}
+                  >
+                    Rename
+                  </div>
+                  <div
+                    className="dropdown-option delete-option"
                     onClick={(e) => {
                       e.stopPropagation();
                       setChatToDelete(chat.id);
-                      setChatDropdownIndex(null);
+                      setOpenDropdown({ type: null, index: null });
                     }}
                   >
                     🗑 Delete
@@ -556,33 +670,25 @@ function MainPage() {
           {uploadedFiles.map((file, index) => (
             <li key={index} className="file-item">
               <div className="file-row">
-                <a
-                  href={`${BACKEND_URL}/files/${file.filename}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="file-link"
-                >
+                <a href={`${BACKEND_URL}/files/${file.filename}`} target="_blank" rel="noopener noreferrer" className="file-link">
                   {file.filename}
                 </a>
-                <div
+                <div 
                   className="file-options-trigger"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setFileDropdownIndex(fileDropdownIndex === index ? null : index);
-                  }}
+                  onClick={(e) => handleDropdownToggle('file', index, e)}
                 >
                   ⋯
                 </div>
               </div>
-              {fileDropdownIndex === index && (
-                <div className="file-options-dropdown" ref={dropdownRef}>
-                  <div
-                    className="dropdown-option"
+              {openDropdown.type === 'file' && openDropdown.index === index && (
+                <div className="file-options-dropdown">
+                  <div 
+                    className="dropdown-option delete-option"
                     onClick={(e) => {
                       e.stopPropagation();
                       setFileToDelete(file.filename);
                       setShowDeleteConfirm(true);
-                      setFileDropdownIndex(null);
+                      setOpenDropdown({ type: null, index: null });
                     }}
                   >
                     🗑 Delete

@@ -98,6 +98,11 @@ def get_all_chats():
     columns = ['id', 'name', 'created_at']
     return [dict(zip(columns, row)) for row in rows]
 
+def update_chat_name(chat_id, new_name):
+    db = DatabaseSingleton()
+    db.execute("UPDATE chat SET name = ? WHERE id = ?", (new_name, chat_id))
+    return db.fetchone("SELECT name FROM chat WHERE id = ?", (chat_id,))[0]
+
 def delete_chat(chat_id):
     db = DatabaseSingleton()
     db.execute("DELETE FROM chat WHERE id = ?", (chat_id,))
@@ -113,5 +118,11 @@ def insert_chat_message(chat_id, usermessage, botmessage):
 
 def get_chat_messages(chat_id):
     db = DatabaseSingleton()
-    rows = db.fetchall("SELECT usermessage, botmessage FROM chat_messages WHERE chat_id = ?", (chat_id,))
-    return [{'usermessage': r[0], 'botmessage': r[1]} for r in rows]
+    rows = db.fetchall("SELECT chat_id, usermessage, botmessage FROM chat_messages WHERE chat_id = ?", (chat_id,))
+    return [{'chat_id':r[0], 'usermessage': r[1], 'botmessage': r[2]} for r in rows]
+
+def get_all_chat_messages():
+    db = DatabaseSingleton()
+    rows = db.fetchall("SELECT chat_id, usermessage, botmessage FROM chat_messages")
+    return [{'chat_id':r[0], 'usermessage': r[1], 'botmessage': r[2]} for r in rows]
+

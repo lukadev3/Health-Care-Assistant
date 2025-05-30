@@ -1,5 +1,6 @@
 import os
 import chromadb
+from llama_cloud import MessageRole
 from llama_index.core import Document
 from llama_index.core import VectorStoreIndex, StorageContext, SummaryIndex
 from llama_index.vector_stores.chroma import ChromaVectorStore
@@ -12,8 +13,10 @@ from llama_index.core.query_engine import RouterQueryEngine, SubQuestionQueryEng
 from llama_index.core.selectors import LLMMultiSelector
 from llama_index.core.tools import QueryEngineTool
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-from llama_index.core.chat_engine.condense_question import CondenseQuestionChatEngine
+from llama_index.core.chat_engine import CondenseQuestionChatEngine
 from llama_index.core.memory import ChatMemoryBuffer
+from llama_index.core.chat_engine.types import ChatMessage
+from llama_index.core.prompts import PromptTemplate
 import logging
 from llama_index.core import load_index_from_storage
 from dotenv import load_dotenv
@@ -86,40 +89,27 @@ def query_document(query: str, tools: list, chat_history: list[tuple[str, str]])
 
     """Answer the query using SubQuestionQueryEngine with multiple tools."""
 
+    history_text = "\n".join([f"User: {user}\nAssistant: {assistant}" for user, assistant in chat_history])
+
     prompt = (
-        "You are a helpful and knowledgeable assistant specialized in interpreting technical manuals and product documentation. "
-        "You have access to specialized tools containing all relevant information, and you must rely solely on those tools to answer user questions.\n\n"
+        "You are a helpful assistant specialized in interpreting drug manuals.\n"
+        "You have access to multiple specialized tools, each containing detailed information about different drugs.\n"
+        "Use only the most relevant tool based on the current context of the conversation.\n"
+        "If the user asks a follow-up question like 'how to use it', infer what 'it' refers to from the previous conversation.\n"
+        "Do not switch tools unless the user clearly refers to a new drug or topic.\n"
+        "If the user's query involves multiple drugs or requires cross-referencing, intelligently combine the necessary tools.\n"
+        "Always explain your answer in a clear, detailed, and natural way, as if you're helping someone without medical expertise.\n\n"
+        "Here is the previous conversation for context:\n"
+        f"{history_text}\n\n"
+        "Now answer the following user query:\n"
+        f"{query}\n"
+    )
 
-        "Your goal is to provide clear, detailed, and human-like responses that are easy to understand, even for non-experts. "
-        "Always use the tools to extract accurate answers and expand them with context when possible. Make your explanations thorough but natural, as if you’re speaking to someone who needs help understanding a product.\n\n"
-
-        "⚠️ Important rules:\n"
-        "- Use ONLY the tools to find answers — do not guess or invent anything.\n"
-        "- DO NOT reference where you found the answer (no section names, no document IDs).\n"
-        "- DO NOT respond with short or vague answers — always expand with helpful context, examples, or related tips.\n"
-        "- Always sound polite, calm, and confident — like a real person helping another.\n"
-        "- If you can make bullets for better understanding.\n"
-        "- If the answer cannot be found using the tools, say: "
-        "'I'm sorry, I couldn't find the answer to that based on the available information. Do you maybe have another question related to this product?'\n\n"
-        
-        "✅ If there is additional information from the tools that might help the user ask a better question or understand the product more deeply, "
-        "politely ask the user if they would like to hear about it.\n\n"
-    )  
 
     try:
         sub_engine = SubQuestionQueryEngine.from_defaults(query_engine_tools=tools)
-
-        memory = ChatMemoryBuffer.from_defaults()
-        for user_msg, bot_msg in chat_history:
-            memory.put(user_msg, bot_msg)
-
-        chat_engine = CondenseQuestionChatEngine.from_defaults(
-            query_engine=sub_engine,
-            memory=memory,
-        )
-
-        response = chat_engine.chat(query)
-        return response.response
+        response = sub_engine.query(prompt)
+        return str(response)
 
     except Exception as e:
         return (

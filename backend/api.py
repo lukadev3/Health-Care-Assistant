@@ -4,7 +4,7 @@ import asyncio
 from quart import Quart, request, jsonify, Response, send_file
 from quart_cors import cors
 from rag import handle_upload, query_document, load_query_tool, delete_document
-from database import init_db, insert_pdf_file, get_file, delete_pdf_file, get_all_files, insert_chat_message, get_chat_messages, insert_chat, get_all_chats, delete_chat
+from database import init_db, insert_pdf_file, delete_pdf_file, get_all_files, insert_chat_message, get_all_chat_messages, insert_chat, get_all_chats, delete_chat, update_chat_name
 from dotenv import load_dotenv
 
 import nest_asyncio
@@ -21,11 +21,13 @@ app = cors(app, allow_origin=["http://localhost:5173", "http://127.0.0.1:5173"])
 tools = []
 all_files = []
 all_chats = []
+all_chats_messages = []
 
 async def load_tools_in_background():
-    global tools, all_files
+    global tools, all_files, all_chats_messages, all_chats
     all_files = get_all_files()
     all_chats = get_all_chats()
+    all_chats_messages = get_all_chat_messages()
 
     for file in all_files:
         filename = os.path.splitext(file["filename"])[0]
@@ -46,11 +48,15 @@ async def startup():
 
 @app.route("/files/<filename>", methods=["GET"])
 async def open_file(filename):
-    file_record = get_file(filename)
+    global all_files
+    for file in all_files:
+        if(file['filename'] == filename):
+            file_record = file
+
     if not file_record:
         return jsonify({"error": "File not found"}), 404
     
-    _, filepath, _ = file_record
+    filepath = file_record['filepath']
     return await send_file(filepath, as_attachment=False)
 
 @app.route("/files", methods=["GET"])
@@ -93,7 +99,11 @@ async def delete_pdf():
     file = form["file"]
     filename = file.filename
 
-    _, file_path, _ = get_file(filename)
+    for file in all_files:
+        if(file['filename'] == filename):
+            file_record = file
+
+    file_path = file_record['filepath']
     os.remove(file_path)
     file_storage_context_path = os.path.join(storage_context_path, os.path.splitext(filename)[0])
     if os.path.isdir(file_storage_context_path):
@@ -108,7 +118,7 @@ async def delete_pdf():
 
 @app.route("/query", methods=["GET"])
 async def query_pdf():
-    global tools, all
+    global tools, all_chats_messages
     query = request.args.get("q")
     if not query:
         return jsonify({"error": "Query is required"}), 400
@@ -123,9 +133,9 @@ async def query_pdf():
         }), 503
     
     chat_history = []
-    for chat in all_chats:
-        if(chat['id'] == id):
-            conversation = (chat['botmessage'], chat['usermessage'])
+    for chat in all_chats_messages:
+        if(chat['chat_id'] == int(id)):
+            conversation = (chat['usermessage'], chat['botmessage'])
             chat_history.append(conversation)
     try:
         response = query_document(query, tools, chat_history)
@@ -137,33 +147,61 @@ async def query_pdf():
 
 @app.route("/chats", methods=["GET"])
 async def list_chats():
-    chats = get_all_chats()
-    return jsonify({"chats": chats})
+    global all_chats
+    return jsonify({"chats": all_chats})
 
 @app.route("/chats", methods=["POST"])
 async def create_chat():
+    global all_chats
     data = await request.get_json()
-    name = data.get("name", f"Chat {len(get_all_chats()) + 1}")  # Default name if not provided
+    name = data.get("name", "New chat")  
     
     chat_id = insert_chat(name)
+    all_chats = get_all_chats()
     return jsonify({
         "message": "Chat created successfully", 
         "chat_id": chat_id,
         "chat_name": name
     })
 
+@app.route("/chats/<int:chat_id>", methods=["PUT"])
+async def update_chat(chat_id):
+    global all_chats
+    data = await request.get_json()
+    new_name = data.get("name")
+    
+    if not new_name:
+        return jsonify({"error": "New name is required"}), 400
+    
+    try:
+        updated_name = update_chat_name(chat_id, new_name)
+        all_chats = get_all_chats()
+        return jsonify({
+            "message": "Chat renamed successfully",
+            "chat_id": chat_id,
+            "chat_name": updated_name
+        })
+    except Exception as e:
+        return jsonify({"error": f"Failed to rename chat: {str(e)}"}), 500
+
 @app.route("/chats/<int:chat_id>", methods=["DELETE"])
 async def remove_chat(chat_id):
+    global all_chats
     delete_chat(chat_id)
+    all_chats = get_all_chats()
     return jsonify({"message": f"Chat {chat_id} and its messages deleted successfully"})
 
 @app.route("/chats/<int:chat_id>/messages", methods=["GET"])
 async def get_messages(chat_id):
-    messages = get_chat_messages(chat_id)
+    messages = []
+    for chat_message in all_chats_messages:
+        if(chat_message['chat_id'] == int(chat_id)):
+            messages.append(chat_message)
     return jsonify({"messages": messages})
 
 @app.route("/chats/<int:chat_id>/messages", methods=["POST"])
 async def add_message(chat_id):
+    global all_chats_messages
     data = await request.get_json()
     usermessage = data.get("usermessage")
     botmessage = data.get("botmessage")
@@ -172,5 +210,6 @@ async def add_message(chat_id):
         return jsonify({"error": "Both usermessage and botmessage are required"}), 400
 
     insert_chat_message(chat_id, usermessage, botmessage)
+    all_chats_messages = get_all_chat_messages()
     return jsonify({"message": "Message added successfully"})
 

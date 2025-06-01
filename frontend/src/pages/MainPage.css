@@ -167,40 +167,70 @@ ul {
   to { transform: rotate(360deg); }
 }
 
-.upload-message {
+.notification-container {
   position: fixed;
-  bottom: 20px;
+  top: 20px;
   right: 20px;
-  background-color: #d1e7dd;
-  color: #0f5132;
-  padding: 12px 16px;
-  border-radius: 8px;
-  font-weight: 500;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   z-index: 10000;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+  max-width: 400px;
+}
+
+.upload-message {
+  position: relative;
+  padding: 16px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+  font-weight: 500;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   display: flex;
   align-items: center;
-  gap: 12px;
-  transition: opacity 1s ease-out;
+  justify-content: space-between;
+  width: 320px;
+  min-height: 60px;
+  transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  transform: translateY(0);
   opacity: 1;
+  border-left: 4px solid;
+  animation: slideIn 0.3s forwards;
 }
 
 .upload-message.success {
-  background-color: #d4edda;
-  color: #155724;
-  border: 1px solid #c3e6cb;
+  background-color: #f6ffed;
+  color: #52c41a;
+  border-color: #52c41a;
 }
 
 .upload-message.error {
-  background-color: #f8d7da;
-  color: #721c24;
-  border: 1px solid #f5c6cb;
+  background-color: #fff2f0;
+  color: #ff4d4f;
+  border-color: #ff4d4f;
 }
 
 .upload-message.fade-out {
-  opacity: 0;
+  animation: slideOut 0.3s forwards;
 }
 
+@keyframes slideIn {
+  from {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOut {
+  to {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+}
 .close-button {
   background: none;
   border: none;

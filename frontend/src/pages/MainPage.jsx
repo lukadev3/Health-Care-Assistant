@@ -18,12 +18,9 @@ function MainPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
-  const [uploadMessage, setUploadMessage] = useState("");
-  const [uploadStatus, setUploadStatus] = useState("success");
-  const [showFadeOut, setShowFadeOut] = useState(false);
+  const [notifications, setNotifications] = useState([]);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [fileToDelete, setFileToDelete] = useState(null);
-  const [fileDropdownIndex, setFileDropdownIndex] = useState(null);
   const [chats, setChats] = useState([]);
   const [selectedChat, setSelectedChat] = useState(null);
   const [showChatNameModal, setShowChatNameModal] = useState(false);
@@ -43,6 +40,25 @@ function MainPage() {
   const chatNameInputRef = useRef(null);
 
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
+
+  const addNotification = (message, status) => {
+    const id = Date.now();
+    setNotifications(prev => [...prev, { id, message, status, show: true }]);
+    
+    setTimeout(() => {
+      removeNotification(id);
+    }, 5000);
+  };
+
+  const removeNotification = (id) => {
+    setNotifications(prev => prev.map(n => 
+      n.id === id ? { ...n, show: false } : n
+    ));
+    
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+    }, 1000);
+  };
 
   const startEditingChat = (chat) => {
     setEditingChatId(chat.id);
@@ -85,15 +101,6 @@ function MainPage() {
       }
     } catch (error) {
       console.error("Error renaming chat:", error);
-      setUploadStatus("error");
-      setUploadMessage("Error renaming chat.");
-      setShowFadeOut(false);
-      
-      setTimeout(() => setShowFadeOut(true), 4000);
-      setTimeout(() => {
-        setUploadMessage("");
-        setShowFadeOut(false);
-      }, 5000);
     } finally {
       setEditingChatId(null);
       setEditingChatName("");
@@ -218,23 +225,10 @@ function MainPage() {
       setSelectedChat(newChat);
       setShowChatNameModal(false);
       setNewChatName("");
-      setUploadStatus("success");
-      setUploadMessage("Chat created successfully.");
-      setTimeout(() => setShowFadeOut(true), 4000);
-      setTimeout(() => {
-        setUploadMessage("");
-        setShowFadeOut(false);
-      }, 5000);
-
+      addNotification("Chat created successfully.", "success");
     } catch (error) {
       console.error("Error creating chat:", error);
-      setUploadStatus("error");
-      setUploadMessage("Error creating chat.");
-      setTimeout(() => setShowFadeOut(true), 4000);
-      setTimeout(() => {
-        setUploadMessage("");
-        setShowFadeOut(false);
-      }, 5000);
+      addNotification("Error creating chat.", "error");
     }
   };
 
@@ -252,22 +246,10 @@ function MainPage() {
         setSelectedChat(remainingChats.length > 0 ? remainingChats[0] : null);
       }
 
-      setUploadStatus("success");
-      setUploadMessage("Chat deleted successfully.");
-      setTimeout(() => setShowFadeOut(true), 4000);
-      setTimeout(() => {
-        setUploadMessage("");
-        setShowFadeOut(false);
-      }, 5000);
+      addNotification("Chat deleted successfully.", "success");
     } catch (error) {
       console.error("Error deleting chat:", error);
-      setUploadStatus("error");
-      setUploadMessage("Error deleting chat.");
-      setTimeout(() => setShowFadeOut(true), 4000);
-      setTimeout(() => {
-        setUploadMessage("");
-        setShowFadeOut(false);
-      }, 5000);
+      addNotification("Error deleting chat.", "success");
     } finally {
       setChatLoading(false);
       setChatToDelete(null);
@@ -343,9 +325,6 @@ function MainPage() {
     formData.append("file", file);
 
     setUploading(true);
-    setUploadMessage("");
-    setUploadStatus("success");
-    setShowFadeOut(false);
 
     try {
       const res = await fetch(`${BACKEND_URL}/upload`, {
@@ -354,27 +333,13 @@ function MainPage() {
       });
 
       if (!res.ok) throw new Error("Upload failed");
-
-      const data = await res.json();
-      setUploadStatus("success");
-      setUploadMessage(data.message || "File uploaded successfully.");
       fetchFiles();
 
-      setTimeout(() => setShowFadeOut(true), 4000);
-      setTimeout(() => {
-        setUploadMessage("");
-        setShowFadeOut(false);
-      }, 5000);
+      const data = await res.json();
+      addNotification(data.message || "File uploaded successfully.", "succes")
     } catch (err) {
       console.error("Error uploading file:", err);
-      setUploadStatus("error");
-      setUploadMessage("Error uploading file.");
-
-      setTimeout(() => setShowFadeOut(true), 4000);
-      setTimeout(() => {
-        setUploadMessage("");
-        setShowFadeOut(false);
-      }, 5000);
+      addNotification("Error uploading file.","error")
     } finally {
       setUploading(false);
     }
@@ -394,27 +359,13 @@ function MainPage() {
       });
 
       if (!res.ok) throw new Error("Failed to delete file");
-
-      const data = await res.json();
-      setUploadStatus("success");
-      setUploadMessage(data.message || "File deleted successfully.");
       fetchFiles();
 
-      setTimeout(() => setShowFadeOut(true), 4000);
-      setTimeout(() => {
-        setUploadMessage("");
-        setShowFadeOut(false);
-      }, 5000);
+      const data = await res.json();
+      addNotification(data.message || "File deleted successfully.", "succes")
     } catch (err) {
       console.error("Error deleting file:", err);
-      setUploadStatus("error");
-      setUploadMessage("Error deleting file.");
-
-      setTimeout(() => setShowFadeOut(true), 4000);
-      setTimeout(() => {
-        setUploadMessage("");
-        setShowFadeOut(false);
-      }, 5000);
+      addNotification("Error deleting file.","error")
     } finally {
       setUploading(false);
       setShowDeleteConfirm(false);
@@ -436,14 +387,22 @@ function MainPage() {
         </div>
       )}
 
-      {uploadMessage && (
-        <div className={`upload-message ${uploadStatus} ${showFadeOut ? "fade-out" : ""}`}>
-          <span>{uploadMessage}</span>
-          <button className="close-button" onClick={() => setUploadMessage("")}>
-            ×
-          </button>
-        </div>
-      )}
+      <div className="notification-container">
+        {notifications.map((notification) => (
+          <div 
+            key={notification.id}
+            className={`upload-message ${notification.status} ${!notification.show ? "fade-out" : ""}`}
+          >
+            <span>{notification.message}</span>
+            <button 
+              className="close-button" 
+              onClick={() => removeNotification(notification.id)}
+            >
+              ×
+            </button>
+          </div>
+        ))}
+      </div>
 
       {showChatNameModal && (
         <div className="delete-confirm-modal">

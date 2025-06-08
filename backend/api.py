@@ -75,18 +75,24 @@ async def upload_pdf():
     file = form["file"]
     filename = file.filename 
 
+    if not filename.lower().endswith('.pdf'):
+        return jsonify({"error": "Only PDF files are allowed"}), 400
+
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
 
     filepath = os.path.join(folder_path, filename)
-    await file.save(filepath)
-
-    tool, description = handle_upload(filepath, os.path.splitext(filename)[0])
-    tools.append(tool)
-    insert_pdf_file(filename, filepath, description)
-    all_files = get_all_files()
-
-    return jsonify({"message": f"PDF {filename} uploaded successfully!"})
+    try:
+        await file.save(filepath)
+        tool, description = handle_upload(filepath, os.path.splitext(filename)[0])
+        tools.append(tool)
+        insert_pdf_file(filename, filepath, description)
+        all_files = get_all_files()
+        return jsonify({"message": f"PDF {filename} uploaded successfully!"})
+    except Exception as e:
+        if os.path.exists(filepath):
+            os.remove(filepath)
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/delete", methods=["DELETE"])
 async def delete_pdf(): 
@@ -99,22 +105,28 @@ async def delete_pdf():
     file = form["file"]
     filename = file.filename
 
+    file_record = None
     for file in all_files:
         if(file['filename'] == filename):
             file_record = file
 
+    if not file_record:
+        return jsonify({"error": "File not found"}), 404
+
     file_path = file_record['filepath']
-    os.remove(file_path)
-    file_storage_context_path = os.path.join(storage_context_path, os.path.splitext(filename)[0])
-    if os.path.isdir(file_storage_context_path):
-        shutil.rmtree(file_storage_context_path, ignore_errors=True)
+    try:
+        os.remove(file_path)
+        file_storage_context_path = os.path.join(storage_context_path, os.path.splitext(filename)[0])
+        if os.path.isdir(file_storage_context_path):
+            shutil.rmtree(file_storage_context_path, ignore_errors=True)
 
-    delete_pdf_file(filename)
-    delete_document(os.path.splitext(filename)[0])
-    tools = [tool for tool in tools if tool.metadata.name != os.path.splitext(filename)[0]]
-    all_files = get_all_files()
-
-    return jsonify({"message": f"PDF {filename} deleted successfully!"})
+        delete_pdf_file(filename)
+        delete_document(os.path.splitext(filename)[0])
+        tools = [tool for tool in tools if tool.metadata.name != os.path.splitext(filename)[0]]
+        all_files = get_all_files()
+        return jsonify({"message": f"PDF {filename} deleted successfully!"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/query", methods=["GET"])
 async def query_pdf():
@@ -156,13 +168,16 @@ async def create_chat():
     data = await request.get_json()
     name = data.get("name", "New chat")  
     
-    chat_id = insert_chat(name)
-    all_chats = get_all_chats()
-    return jsonify({
-        "message": "Chat created successfully", 
-        "chat_id": chat_id,
-        "chat_name": name
-    })
+    try:
+        chat_id = insert_chat(name)
+        all_chats = get_all_chats()
+        return jsonify({
+            "message": "Chat created successfully", 
+            "chat_id": chat_id,
+            "chat_name": name
+        })
+    except Exception as e:
+        return jsonify({"error": f"Failed to create chat: {str(e)}"}), 500
 
 @app.route("/chats/<int:chat_id>", methods=["PUT"])
 async def update_chat(chat_id):
@@ -187,9 +202,12 @@ async def update_chat(chat_id):
 @app.route("/chats/<int:chat_id>", methods=["DELETE"])
 async def remove_chat(chat_id):
     global all_chats
-    delete_chat(chat_id)
-    all_chats = get_all_chats()
-    return jsonify({"message": f"Chat {chat_id} and its messages deleted successfully"})
+    try:
+        delete_chat(chat_id)
+        all_chats = get_all_chats()
+        return jsonify({"message": f"Chat {chat_id} and its messages deleted successfully"})
+    except Exception as e:
+        return jsonify({"error": f"Failed to delete chat: {str(e)}"}), 500
 
 @app.route("/chats/<int:chat_id>/messages", methods=["GET"])
 async def get_messages(chat_id):
@@ -209,7 +227,10 @@ async def add_message(chat_id):
     if not usermessage or not botmessage:
         return jsonify({"error": "Both usermessage and botmessage are required"}), 400
 
-    insert_chat_message(chat_id, usermessage, botmessage)
-    all_chats_messages = get_all_chat_messages()
-    return jsonify({"message": "Message added successfully"})
+    try:
+        insert_chat_message(chat_id, usermessage, botmessage)
+        all_chats_messages = get_all_chat_messages()
+        return jsonify({"message": "Message added successfully"})
+    except Exception as e:
+        return jsonify({"error": f"Failed to save message: {str(e)}"}), 500
 

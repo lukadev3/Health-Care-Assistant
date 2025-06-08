@@ -87,7 +87,10 @@ function MainPage() {
         }),
       });
 
-      if (!res.ok) throw new Error("Failed to rename chat");
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to rename chat");
+      }
 
       const data = await res.json();
       const newName = data.chat_name || nameToSave;
@@ -99,8 +102,11 @@ function MainPage() {
       if (selectedChat?.id === editingChatId) {
         setSelectedChat(prev => prev.name === newName ? prev : { ...prev, name: newName });
       }
+      
+      addNotification("Chat renamed successfully", "success");
     } catch (error) {
       console.error("Error renaming chat:", error);
+      addNotification(error.message || "Error renaming chat", "error");
     } finally {
       setEditingChatId(null);
       setEditingChatName("");
@@ -155,34 +161,54 @@ function MainPage() {
 
   const fetchFiles = async () => {
     try {
-      const res = await fetch(`${BACKEND_URL}/files`);
-      const data = await res.json();
-      setUploadedFiles(data.files);
+        const res = await fetch(`${BACKEND_URL}/files`);
+        
+        if (!res.ok) {
+            const errorData = await res.json();
+            throw new Error(errorData.error || "Failed to fetch files");
+        }
+
+        const data = await res.json();
+        setUploadedFiles(data.files);
     } catch (error) {
-      console.error("Failed to fetch files:", error);
+        console.error("Failed to fetch files:", error);
+        addNotification(error.message || "Failed to load files", "error");
     }
   };
 
   const fetchChats = async () => {
     try {
-      setChatLoading(true);
-      const res = await fetch(`${BACKEND_URL}/chats`);
-      const data = await res.json();
-      setChats(data.chats);
-      
-      if (data.chats.length > 0 && !selectedChat) {
-        setSelectedChat(data.chats[0]);
-      }
+        setChatLoading(true);
+        const res = await fetch(`${BACKEND_URL}/chats`);
+        
+        if (!res.ok) {
+            const errorData = await res.json();
+            throw new Error(errorData.error || "Failed to fetch chats");
+        }
+
+        const data = await res.json();
+        setChats(data.chats);
+        
+        if (data.chats.length > 0 && !selectedChat) {
+            setSelectedChat(data.chats[0]);
+        }
     } catch (error) {
-      console.error("Failed to fetch chats:", error);
+        console.error("Failed to fetch chats:", error);
+        addNotification(error.message || "Failed to load chats", "error");
     } finally {
-      setChatLoading(false);
+        setChatLoading(false);
     }
   };
 
   const fetchMessages = async (chatId) => {
     try {
       const res = await fetch(`${BACKEND_URL}/chats/${chatId}/messages`);
+      
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to fetch messages");
+      }
+
       const data = await res.json();
       
       if (data.messages.length === 0) {
@@ -196,6 +222,8 @@ function MainPage() {
       }
     } catch (error) {
       console.error("Failed to fetch messages:", error);
+      addNotification(error.message || "Failed to load chat messages", "error");
+      setMessages([{ text: "Failed to load messages. Please try again.", sender: "bot", chatId }]);
     }
   };
 
@@ -216,7 +244,10 @@ function MainPage() {
         }),
       });
 
-      if (!res.ok) throw new Error("Failed to create chat");
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to create chat");
+      }
 
       const data = await res.json();
       const newChat = { id: data.chat_id, name: data.chat_name };
@@ -228,17 +259,22 @@ function MainPage() {
       addNotification("Chat created successfully.", "success");
     } catch (error) {
       console.error("Error creating chat:", error);
-      addNotification("Error creating chat.", "error");
+      addNotification(error.message || "Error creating chat.", "error");
     }
   };
 
   const confirmDeleteChat = async () => {
     try {
       setChatLoading(true);
-      await fetch(`${BACKEND_URL}/chats/${chatToDelete}`, {
+      const res = await fetch(`${BACKEND_URL}/chats/${chatToDelete}`, {
         method: "DELETE"
       });
       
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to delete chat");
+      }
+
       setChats(prev => prev.filter(chat => chat.id !== chatToDelete));
       
       if (selectedChat?.id === chatToDelete) {
@@ -249,12 +285,12 @@ function MainPage() {
       addNotification("Chat deleted successfully.", "success");
     } catch (error) {
       console.error("Error deleting chat:", error);
-      addNotification("Error deleting chat.", "success");
+      addNotification(error.message || "Error deleting chat.", "error");
     } finally {
       setChatLoading(false);
       setChatToDelete(null);
     }
-  };
+  };  
 
   const handleSend = async () => {
     if (!input.trim() || !selectedChat) return;
@@ -284,7 +320,10 @@ function MainPage() {
         { method: "GET", mode: "cors" }
       );
 
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to get response");
+      }
 
       const data = await res.json();
       const botMessage = { text: data.response, sender: "bot" };
@@ -310,8 +349,9 @@ function MainPage() {
       console.error("Error:", error);
       setMessages(prev => [
         ...prev.filter(m => m.text !== "Typing..."),
-        { text: "Error contacting server.", sender: "bot" },
+        { text: error.message || "An error occurred while generating the response.", sender: "bot" },
       ]);
+      addNotification(error.message || "Error generating response", "error");
     } finally {
       setIsLoading(false);
     }
@@ -332,20 +372,23 @@ function MainPage() {
         body: formData,
       });
 
-      if (!res.ok) throw new Error("Upload failed");
-      fetchFiles();
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Upload failed");
+      }
 
+      fetchFiles();
       const data = await res.json();
-      addNotification(data.message || "File uploaded successfully.", "succes")
+      addNotification(data.message || "File uploaded successfully.", "success");
     } catch (err) {
       console.error("Error uploading file:", err);
-      addNotification("Error uploading file.","error")
+      addNotification(err.message || "Error uploading file.", "error");
     } finally {
       setUploading(false);
     }
   };
 
-  const handleDeleteFile = async (filename) => {
+ const handleDeleteFile = async (filename) => {
     const formData = new FormData();
     const fileBlob = new Blob([], { type: "application/pdf" });
     const fakeFile = new File([fileBlob], filename);
@@ -358,14 +401,17 @@ function MainPage() {
         body: formData,
       });
 
-      if (!res.ok) throw new Error("Failed to delete file");
-      fetchFiles();
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to delete file");
+      }
 
+      fetchFiles();
       const data = await res.json();
-      addNotification(data.message || "File deleted successfully.", "succes")
+      addNotification(data.message || "File deleted successfully.", "success");
     } catch (err) {
       console.error("Error deleting file:", err);
-      addNotification("Error deleting file.","error")
+      addNotification(err.message || "Error deleting file.", "error");
     } finally {
       setUploading(false);
       setShowDeleteConfirm(false);
@@ -623,6 +669,7 @@ function MainPage() {
             ref={fileInputRef}
             style={{ display: "none" }}
             onChange={handleFileUpload}
+            accept=".pdf,application/pdf" 
           />
         </div>
         <ul>

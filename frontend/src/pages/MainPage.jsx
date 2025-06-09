@@ -104,7 +104,6 @@ function MainPage() {
         setSelectedChat(prev => prev.name === newName ? prev : { ...prev, name: newName });
       }
       
-      addNotification("Chat renamed successfully", "success");
     } catch (error) {
       console.error("Error renaming chat:", error);
       addNotification(error.message || "Error renaming chat", "error");

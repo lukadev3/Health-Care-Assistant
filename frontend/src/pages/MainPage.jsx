@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import "./MainPage.css";
 import ReactMarkdown from "react-markdown";
+import { Copy } from 'lucide-react';
 
 function TypingIndicator() {
   return (
@@ -419,6 +420,17 @@ function MainPage() {
     }
   };
 
+  const copyToClipboard = (text) => {
+  navigator.clipboard.writeText(text)
+    .then(() => {
+      addNotification("Text copied to clipboard!", "success");
+    })
+    .catch((err) => {
+      console.error("Failed to copy:", err);
+      addNotification("Failed to copy text", "error");
+    });
+  };
+
   return (
     <div id="chat_content">
       {uploading && (
@@ -616,12 +628,20 @@ function MainPage() {
             </div>
             <div className="messages">
               {messages.map((msg, idx) => (
-                <div key={idx} className={`message ${msg.sender}`}>
-                  {msg.text === "Typing..." ? (
-                    <TypingIndicator />
-                  ) : (
-                    <ReactMarkdown>{msg.text}</ReactMarkdown>
-                  )}
+                <div key={idx} className={`message-wrapper ${msg.sender}`}>
+                  <div className={`message ${msg.sender}`}>
+                    {msg.text === "Typing..." ? (
+                      <TypingIndicator />
+                    ) : (
+                      <ReactMarkdown>{msg.text}</ReactMarkdown>
+                    )}
+                  </div>
+                  <button 
+                    className="copy-message-button"
+                    onClick={() => copyToClipboard(msg.text)}
+                  >      
+                    <Copy size={18} color="#555" />
+                  </button>
                 </div>
               ))}
               <div ref={messagesEndRef} />

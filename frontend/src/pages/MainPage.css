@@ -83,7 +83,6 @@ ul {
   flex-direction: column;
   gap: 10px;
   overflow-y: auto;
-
   scrollbar-width: thin; 
   scrollbar-color: #dbdbdb transparent; 
 }

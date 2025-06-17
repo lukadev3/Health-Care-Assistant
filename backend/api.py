@@ -4,7 +4,8 @@ import asyncio
 from quart import Quart, request, jsonify, Response, send_file
 from quart_cors import cors
 from rag import handle_upload, query_document, load_query_tool, delete_document
-from database import init_db, insert_pdf_file, delete_pdf_file, get_all_files, insert_chat_message, get_all_chat_messages, insert_chat, get_all_chats, delete_chat, update_chat_name
+from database import (init_db, insert_pdf_file, delete_pdf_file, get_all_files, 
+                      insert_chat_message, get_all_chat_messages, insert_chat, get_all_chats, delete_chat, update_chat_name, delete_messages_after)
 from dotenv import load_dotenv
 
 import nest_asyncio
@@ -226,11 +227,21 @@ async def add_message(chat_id):
 
     if not usermessage or not botmessage:
         return jsonify({"error": "Both usermessage and botmessage are required"}), 400
-
     try:
-        insert_chat_message(chat_id, usermessage, botmessage)
+        message_id = insert_chat_message(chat_id, usermessage, botmessage)
         all_chats_messages = get_all_chat_messages()
-        return jsonify({"message": "Message added successfully"})
+        return jsonify({"message": "Message added successfully", "id": message_id})
     except Exception as e:
         return jsonify({"error": f"Failed to save message: {str(e)}"}), 500
 
+@app.route("/chats/<int:chat_id>/messages", methods=["DELETE"])
+async def delete_messages(chat_id):
+    global all_chats_messages
+    data = await request.get_json()
+    message_id = data.get("id")
+    try:
+        delete_messages_after(message_id, chat_id)
+        all_chats_messages = get_all_chat_messages()
+        return jsonify({"message": "Messages successfully deleted"})
+    except Exception as e:
+        return jsonify({"error": f"Failed to save message: {str(e)}"}), 500

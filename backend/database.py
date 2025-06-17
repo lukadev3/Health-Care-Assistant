@@ -115,14 +115,30 @@ def insert_chat_message(chat_id, usermessage, botmessage):
         INSERT INTO chat_messages (chat_id, usermessage, botmessage)
         VALUES (?, ?, ?)
     """, (chat_id, usermessage, botmessage))
+    return db.cursor.lastrowid
 
 def get_chat_messages(chat_id):
     db = DatabaseSingleton()
-    rows = db.fetchall("SELECT chat_id, usermessage, botmessage FROM chat_messages WHERE chat_id = ?", (chat_id,))
-    return [{'chat_id':r[0], 'usermessage': r[1], 'botmessage': r[2]} for r in rows]
+    rows = db.fetchall("SELECT id, chat_id, usermessage, botmessage FROM chat_messages WHERE chat_id = ?", (chat_id,))
+    return [{'id':r[0], 'chat_id':r[1], 'usermessage': r[2], 'botmessage': r[3]} for r in rows]
 
 def get_all_chat_messages():
     db = DatabaseSingleton()
-    rows = db.fetchall("SELECT chat_id, usermessage, botmessage FROM chat_messages")
-    return [{'chat_id':r[0], 'usermessage': r[1], 'botmessage': r[2]} for r in rows]
+    rows = db.fetchall("SELECT id, chat_id, usermessage, botmessage FROM chat_messages")
+    return [{'id': r[0], 'chat_id':r[1], 'usermessage': r[2], 'botmessage': r[3]} for r in rows]
+
+def delete_messages_after(message_id, chat_id):
+    db = DatabaseSingleton()
+    result = db.fetchone(
+        "SELECT created_at FROM chat_messages WHERE id = ? AND chat_id = ?",
+        (message_id, chat_id)
+    )
+    if not result:
+        raise ValueError("Message not found for deletion.")
+    created_at = result[0]
+    db.execute(
+        "DELETE FROM chat_messages WHERE chat_id = ? AND created_at >= ?",
+        (chat_id, created_at)
+    )
+
 

@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import "./MainPage.css";
 import ReactMarkdown from "react-markdown";
-import { Copy } from 'lucide-react';
+import { Copy, Pencil } from 'lucide-react';
+import { EditableTextArea } from "../components/EditableTextArea";
+import CustomInputArea from '../components/CustomInputArea';
 
 function TypingIndicator() {
   return (
@@ -39,6 +41,8 @@ function MainPage() {
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
   const chatNameInputRef = useRef(null);
+  const shouldScrollRef = useRef(true);
+  const inputRef = useRef();
 
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
@@ -114,27 +118,35 @@ function MainPage() {
   };
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (shouldScrollRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+    shouldScrollRef.current = true;
   }, [messages]);
+
+
 
   useEffect(() => {
     fetchFiles();
     fetchChats();
   }, []);
 
+
+  useEffect(() => {
+    console.log("Messages updated:", messages);
+  }, [messages]);
+
+
   useEffect(() => {
     if (selectedChat) {
-      const shouldFetch = messages.length === 0 || 
-                        (messages[0] && messages[0].chatId !== selectedChat.id);
-      
-      if (shouldFetch) {
-        setChatLoading(true);
-        fetchMessages(selectedChat.id).finally(() => setChatLoading(false));
-      }
+      setChatLoading(true);
+      setMessages([]);
+      fetchMessages(selectedChat.id).finally(() => setChatLoading(false));
     } else {
       setMessages([]);
     }
-  }, [selectedChat?.id]); 
+  }, [selectedChat?.id]);
+
 
   const handleDropdownToggle = (type, index, e) => {
     e.stopPropagation();
@@ -211,12 +223,10 @@ function MainPage() {
 
       const data = await res.json();
       
-      if (data.messages.length === 0) {
-        setMessages([{ text: "Hello! How can I help you today?", sender: "bot", chatId }]);
-      } else {
+      if (data.messages.length > 0) {
         const formattedMessages = data.messages.flatMap(msg => [
-          { text: msg.usermessage, sender: "user", chatId },
-          { text: msg.botmessage, sender: "bot", chatId }
+          { text: msg.usermessage, sender: "user", chatId, id: msg.id},
+          { text: msg.botmessage, sender: "bot", chatId, id:msg.id }
         ]);
         setMessages(formattedMessages);
       }
@@ -295,28 +305,20 @@ function MainPage() {
   const handleSend = async () => {
     if (!input.trim() || !selectedChat) return;
 
-    const userMessage = { text: input, sender: "user" };
-    setMessages(prev => [...prev, userMessage]);
+    const userText = input;
+    const backupMessages = [...messages]; 
     setInput("");
     setIsLoading(true);
+
+    const tempUserMessage = { text: userText, sender: "user" };
+    setMessages(prev => [...prev, tempUserMessage]);
 
     const typingMessage = { text: "Typing...", sender: "bot" };
     setMessages(prev => [...prev, typingMessage]);
 
     try {
-      await fetch(`${BACKEND_URL}/chats/${selectedChat.id}/messages`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          usermessage: input,
-          botmessage: ""
-        }),
-      });
-
       const res = await fetch(
-        `${BACKEND_URL}/query?q=${encodeURIComponent(input)}&id=${selectedChat.id}`,
+        `${BACKEND_URL}/query?q=${encodeURIComponent(userText)}&id=${selectedChat.id}`,
         { method: "GET", mode: "cors" }
       );
 
@@ -326,32 +328,160 @@ function MainPage() {
       }
 
       const data = await res.json();
-      const botMessage = { text: data.response, sender: "bot" };
 
-      await fetch(`${BACKEND_URL}/chats/${selectedChat.id}/messages`, {
+      const saveRes = await fetch(`${BACKEND_URL}/chats/${selectedChat.id}/messages`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          usermessage: input,
-          botmessage: data.response
+          usermessage: userText,
+          botmessage: data.response,
         }),
       });
 
+      if (!saveRes.ok) {
+        const errorData = await saveRes.json();
+        throw new Error(errorData.error || "Failed to save message");
+      }
+
+      const postData = await saveRes.json();
+      const messageId = postData.id;
+
       setMessages(prev => {
         const updated = [...prev];
+        updated.pop(); 
+
+        const userMessage = {
+          text: userText,
+          sender: "user",
+          chatId: selectedChat.id,
+          id: messageId,
+        };
+
+        const botMessage = {
+          text: data.response,
+          sender: "bot",
+          chatId: selectedChat.id,
+          id: messageId,
+        };
+
         updated.pop();
-        updated.push(botMessage);
-        return updated;
+
+        return [...updated, userMessage, botMessage];
       });
     } catch (error) {
       console.error("Error:", error);
-      setMessages(prev => [
-        ...prev.filter(m => m.text !== "Typing..."),
-        { text: error.message || "An error occurred while generating the response.", sender: "bot" },
-      ]);
+      setMessages(backupMessages)
       addNotification(error.message || "Error generating response", "error");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const saveEditedMessage = async (idx) => {
+    const msg = messages[idx];
+    if (!msg.id || !msg.chatId) {
+      console.error("Message id or chatId missing");
+      return;
+    }
+
+    try {
+      const backupMessages = [...messages]; 
+      setIsLoading(true);
+
+      setMessages(prev => {
+        const updated = [...prev];
+        if (updated[idx]) {
+          updated[idx].isEditing = false;
+        }
+        return updated;
+      });
+
+      setMessages(prevMessages => {
+        const updatedMessages = [...prevMessages];
+        const messageIndex = updatedMessages.findIndex(m => m.id === msg.id);
+        if (messageIndex !== -1) {
+          return updatedMessages.slice(0, messageIndex + 1);
+        }
+        return updatedMessages;
+      });
+
+      const typingMessage = { text: "Typing...", sender: "bot" };
+      setMessages(prev => [...prev, typingMessage]);
+
+
+      const deleteRes = await fetch(`${BACKEND_URL}/chats/${msg.chatId}/messages`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ id: msg.id }),
+      });
+
+      if (!deleteRes.ok) {
+        const errorData = await deleteRes.json();
+        throw new Error(errorData.error || "Failed to delete subsequent messages");
+      }
+
+      const res = await fetch(
+        `${BACKEND_URL}/query?q=${encodeURIComponent(msg.text)}&id=${msg.chatId}`,
+        { method: "GET", mode: "cors" }
+      );
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to get response");
+      }
+
+      const data = await res.json();
+
+      const saveRes = await fetch(`${BACKEND_URL}/chats/${msg.chatId}/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          usermessage: msg.text,
+          botmessage: data.response,
+        }),
+      });
+
+      if (!saveRes.ok) {
+        const errorData = await saveRes.json();
+        throw new Error(errorData.error || "Failed to save edited message");
+      }
+
+      const savedData = await saveRes.json();
+      const newId = savedData.id;
+
+      setMessages(prev => {
+        const updated = prev.filter(
+          m => m.id !== msg.id && m.text !== "Typing..."
+        );
+
+        const userMessage = {
+          text: msg.text,
+          sender: "user",
+          chatId: msg.chatId,
+          id: newId,
+          isEditing: false, 
+        };
+
+        const botMessage = {
+          text: data.response,
+          sender: "bot",
+          chatId: msg.chatId,
+          id: newId,
+        };
+
+        return [...updated, userMessage, botMessage];
+      });
+
+    } catch (error) {
+      console.error("Error saving edited message:", error);
+      setMessages(backupMessages)
+      addNotification(error.message || "Error saving edited message", "error");
     } finally {
       setIsLoading(false);
     }
@@ -388,7 +518,8 @@ function MainPage() {
     }
   };
 
- const handleDeleteFile = async (filename) => {
+
+  const handleDeleteFile = async (filename) => {
     const formData = new FormData();
     const fileBlob = new Blob([], { type: "application/pdf" });
     const fakeFile = new File([fileBlob], filename);
@@ -561,6 +692,7 @@ function MainPage() {
               key={chat.id}
               className={selectedChat?.id === chat.id ? "active" : ""}
               onClick={(e) => {
+                if (isLoading) return;
                 if (!e.target.closest('.chat-options-trigger') && 
                     !e.target.closest('.chat-options-dropdown') &&
                     !e.target.closest('.chat-name-input')) {
@@ -625,45 +757,109 @@ function MainPage() {
             <div className="chat-header">
               <h3>{selectedChat.name}</h3>
             </div>
-            <div className="messages">
+           <div className="messages">
+              {messages.length === 0 && (
+                <div className="chat-intro-message">
+                  How can I help you today?
+                </div>
+              )}
               {messages.map((msg, idx) => (
                 <div key={idx} className={`message-wrapper ${msg.sender}`}>
-                  <div className={`message ${msg.sender}`}>
-                    {msg.text === "Typing..." ? (
-                      <TypingIndicator />
-                    ) : (
-                      <ReactMarkdown>{msg.text}</ReactMarkdown>
+                  {msg.sender === 'user' && msg.isEditing ? (
+                    <EditableTextArea
+                      value={msg.text}
+                      onChange={(e) => {
+                        shouldScrollRef.current = false;
+                        const updatedMessages = [...messages];
+                        updatedMessages[idx].text = e.target.value;
+                        setMessages(updatedMessages);
+                      }}
+                      onKeyDown={async (e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault()
+                          await saveEditedMessage(idx);
+                        }
+                        if (e.key === 'Escape') {
+                          shouldScrollRef.current = false;
+                          const updatedMessages = [...messages];
+                          updatedMessages[idx].isEditing = false;
+                          setMessages(updatedMessages);
+                        }
+                      }}
+                      autoFocus={true}
+                    />
+                  ) : (
+                    <div className={`message ${msg.sender}`}>
+                      {msg.text === "Typing..." ? (
+                        <TypingIndicator />
+                      ) : (
+                        <ReactMarkdown>{msg.text}</ReactMarkdown>
+                      )}
+                    </div>
+                  )}
+                  <div className="message-actions">
+                    {msg.sender === 'user' && !msg.isEditing && (
+                      <button
+                        className="edit-message-button"
+                        onClick={(e) => {
+                          shouldScrollRef.current = false;
+                          const updatedMessages = [...messages];
+                          updatedMessages[idx].isEditing = true;
+                          setMessages(updatedMessages);
+                        }}
+                        disabled={isLoading}
+                      >
+                        <Pencil size={18} color={isLoading ? "#ccc" : "#555"} />
+                      </button>
+                    )}
+                    {!msg.isEditing && (
+                      <button
+                        className="copy-message-button"
+                        onClick={() => copyToClipboard(msg.text)}
+                      >
+                        <Copy size={18} color={isLoading ? "#ccc" : "#555"} />
+                      </button>
                     )}
                   </div>
-                  <button 
-                    className="copy-message-button"
-                    onClick={() => copyToClipboard(msg.text)}
-                  >      
-                    <Copy size={18} color="#555" />
-                  </button>
+                  {msg.sender === 'user' && msg.isEditing && (
+                    <div className="edit-actions">
+                      <button
+                        className="save-edit-button"
+                        onClick={() => { 
+                          saveEditedMessage(idx)
+                        }}
+                        disabled={isLoading}
+                      >
+                        Send
+                      </button>
+                      <button
+                        className="cancel-edit-button"
+                        onClick={() => {
+                          shouldScrollRef.current = false;
+                          const updatedMessages = [...messages];
+                          updatedMessages[idx].isEditing = false;
+                          setMessages(updatedMessages);
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
-              <div ref={messagesEndRef} />
+            <div ref={messagesEndRef} />
             </div>
             <div className="input-area">
-              <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !isLoading) handleSend();
-                }}
-                placeholder="Type your message..."
-              />
-              <button
-                onClick={handleSend}
-                disabled={isLoading}
-                style={{
-                  opacity: isLoading ? 0.5 : 1,
-                  cursor: isLoading ? "not-allowed" : "pointer",
-                }}
-              >
-                {isLoading ? "Generating..." : "Send"}
-              </button>
+             <CustomInputArea
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onButtonClick={handleSend}
+              placeholder="Type your message..."
+              buttonLabel="Send"
+              isLoading={isLoading}
+              autoFocus={true}
+            />
             </div>
           </div>
         ) : (

@@ -803,8 +803,12 @@ function MainPage() {
                         className="edit-message-button"
                         onClick={(e) => {
                           shouldScrollRef.current = false;
-                          const updatedMessages = [...messages];
-                          updatedMessages[idx].isEditing = true;
+
+                          const updatedMessages = messages.map((msg, i) => ({
+                            ...msg,
+                            isEditing: i === idx,  
+                          }));
+
                           setMessages(updatedMessages);
                         }}
                         disabled={isLoading}
@@ -816,6 +820,7 @@ function MainPage() {
                       <button
                         className="copy-message-button"
                         onClick={() => copyToClipboard(msg.text)}
+                        disabled={isLoading}
                       >
                         <Copy size={18} color={isLoading ? "#ccc" : "#555"} />
                       </button>

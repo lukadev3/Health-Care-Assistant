@@ -4,7 +4,7 @@ from llama_index.core.query_engine import RetrieverQueryEngine
 from llama_index.core.retrievers import AutoMergingRetriever
 from llama_index.core.postprocessor import SentenceTransformerRerank
 from llama_index.core.query_engine import RetrieverQueryEngine
-from llama_index.core.tools import QueryEngineTool, ToolMetadata
+from llama_index.core.tools import QueryEngineTool
 
 def clean_text(text: str) -> str:
 
@@ -57,11 +57,9 @@ def make_tool(automerging_index: AutoMergingRetriever, name: str, description: s
         retriever, node_postprocessors=[rerank], use_async=True, streaming=True
     )
 
-    tool = QueryEngineTool(
+    tool = QueryEngineTool.from_defaults(
         query_engine=query_engine,
-        metadata=ToolMetadata(
-            name=f"{name}_tool",
-            description=description
-        )
+        name=f"{name}_tool",
+        description=description
     )
     return tool

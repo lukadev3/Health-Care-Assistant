@@ -9,15 +9,12 @@ from llama_index.core import Settings
 from llama_index.llms.ollama import Ollama
 from llama_index.embeddings.ollama import OllamaEmbedding
 from llama_index.core.node_parser import HierarchicalNodeParser, get_leaf_nodes
-from llama_index.core.query_engine import RouterQueryEngine, SubQuestionQueryEngine
+from llama_index.core.query_engine import RouterQueryEngine, ToolRetrieverRouterQueryEngine
+from llama_index.core.objects import ObjectIndex, SimpleToolNodeMapping, ObjectRetriever
 from llama_index.core.selectors import LLMMultiSelector
 from llama_index.core.tools import QueryEngineTool
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-from llama_index.core.chat_engine import CondenseQuestionChatEngine
 from llama_index.core.memory import ChatMemoryBuffer
-from llama_index.core.chat_engine.types import ChatMessage
-from llama_index.core.prompts import PromptTemplate
-import logging
 from llama_index.core import load_index_from_storage
 from dotenv import load_dotenv
 from utils import extract_text_from_pdf, clean_text, make_tool
@@ -80,37 +77,49 @@ def handle_upload(file_path: str, name: str) -> QueryEngineTool:
     storage_context.persist(persist_dir=f"{STORAGE_CONTEXT_PATH}/{name}")
 
     query_engine = summary_index.as_query_engine()
-    description = query_engine.query("Give me summary of this document.")
+    description = query_engine.query("What is document about? Give me answer in four concise sentences.")
     print(description)
 
     return make_tool(automerging_index, name, str(description)), str(description)
 
 def query_document(query: str, tools: list, chat_history: list[tuple[str, str]]) -> str:
 
-    """Answer the query using SubQuestionQueryEngine with multiple tools."""
+    """Answer the query using ToolRetrieverRouterQueryEngine with multiple tools."""
 
     history_text = "\n".join([f"User: {user}\nAssistant: {assistant}" for user, assistant in chat_history])
-
     prompt = (
-        "You are a helpful assistant specialized in interpreting drug manuals.\n"
-        "You have access to multiple specialized tools, each containing detailed information about a specific drug.\n"
-        "When answering, use only the most relevant tool based on the **latest drug** mentioned in the conversation.\n"
-        "If the user asks a follow-up question like 'how should I use it', assume 'it' refers strictly to the most recently discussed drug or topic.\n"
-        "Do NOT combine answers from multiple tools unless the current question explicitly mentions multiple drugs.\n"
-        "If the user mentions a new drug, switch tools accordingly and treat it as the new context.\n"
-        "Ignore earlier topics unless they are clearly referenced again by the user.\n"
-        "Always explain your answer in a clear, detailed, and natural way, as if you're helping someone without medical expertise.\n\n"
-        "Here is the previous conversation for context:\n"
-        f"{history_text}\n\n"
-        "Now answer the following user query:\n"
-        f"{query}\n"
+        "You are a licensed medical doctor and a professional assistant, specialized in pharmacology and drug usage.\n"
+        "You have access to multiple specialized tools, each representing detailed documentation and clinical guidelines for a specific drug.\n"
+        "Your role is to provide accurate, evidence-based, and easy-to-understand medical advice to patients and users based strictly on the contents of these tools.\n\n"
+
+        "Guidelines for your answers:\n"
+        "- Always use the full context of the conversation to understand what the user is referring to.\n"
+        "- You must track the drug(s) mentioned earlier in the conversation to interpret follow-up questions correctly.\n"
+        "- If the user asks a question like 'how should I use it' or 'does it have side effects', infer what 'it' refers to based on previous context.\n"
+        "- Use **only the most relevant tool**, based on the most recently discussed or clearly referenced drug.\n"
+        "- Do **not combine** information from multiple tools unless the user clearly mentions multiple drugs.\n"
+        "- When a new drug is introduced, switch to that drug as the main context.\n"
+        "- Do not speculate or answer outside the information found in the uploaded documents.\n"
+        "- Avoid referencing tools or data sources by name—respond naturally, like a real doctor would.\n"
+        "- Use clear, human-friendly language while maintaining professionalism and medical precision.\n"
+        "- Always prioritize patient safety and clarity in communication.\n\n"
+
+        f"history chat: {history_text}"
+
+        f"query: {query}"
     )
 
-
-
     try:
-        sub_engine = SubQuestionQueryEngine.from_defaults(query_engine_tools=tools)
-        response = sub_engine.query(prompt)
+        object_index = ObjectIndex.from_objects(
+            tools, index_cls=VectorStoreIndex
+        )        
+        retriever = object_index.as_retriever()
+
+        router_engine = ToolRetrieverRouterQueryEngine(
+            retriever=retriever,
+        )
+        response = router_engine.query(prompt)
+        print(response)
         return str(response)
 
     except Exception as e:

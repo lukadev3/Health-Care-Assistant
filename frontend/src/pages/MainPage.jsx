@@ -1,7 +1,7 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import "./MainPage.css";
 import ReactMarkdown from "react-markdown";
-import { Copy, Pencil } from 'lucide-react';
+import { Copy, Pencil, Search } from 'lucide-react';
 import { EditableTextArea } from "../components/EditableTextArea";
 import CustomInputArea from '../components/CustomInputArea';
 
@@ -16,7 +16,14 @@ function TypingIndicator() {
 }
 
 function MainPage() {
+  const [showSearchModal, setShowSearchModal] = useState(false);
+  const [isSearchLoading, setIsSearchLoading] = useState(false);
+  const [searchType, setSearchType] = useState(null); 
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [allMessages, setAllMessages] = useState([]);
   const [messages, setMessages] = useState([]);
+  const [originalMessage, setOriginalMessage] = useState([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState([]);
@@ -37,7 +44,6 @@ function MainPage() {
     index: null
   });
 
-
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
   const chatNameInputRef = useRef(null);
@@ -45,6 +51,31 @@ function MainPage() {
   const inputRef = useRef();
 
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
+
+  const highlightText = (text, query) => {
+    if (!query || !text) return text;
+    
+    const queryLower = query.toLowerCase();
+    const textLower = text.toLowerCase();
+    const index = textLower.indexOf(queryLower);
+
+    if (index === -1) return text;
+    
+    const prefix = index > 20 ? '...' : '';
+    const displayText = index > 20 ? text.slice(index - 20) : text;
+    
+    const parts = displayText.split(new RegExp(`(${query})`, 'gi'));
+    return (
+      <>
+        {prefix}
+        {parts.map((part, i) => 
+          part.toLowerCase() === queryLower ? 
+          <span key={i} className="highlight">{part}</span> : 
+          part
+        )}
+      </>
+    );
+  };
 
   const addNotification = (message, status) => {
     const id = Date.now();
@@ -124,18 +155,11 @@ function MainPage() {
     shouldScrollRef.current = true;
   }, [messages]);
 
-
-
   useEffect(() => {
     fetchFiles();
     fetchChats();
+    fetchAllMessages();
   }, []);
-
-
-  useEffect(() => {
-    console.log("Messages updated:", messages);
-  }, [messages]);
-
 
   useEffect(() => {
     if (selectedChat) {
@@ -146,7 +170,6 @@ function MainPage() {
       setMessages([]);
     }
   }, [selectedChat?.id]);
-
 
   const handleDropdownToggle = (type, index, e) => {
     e.stopPropagation();
@@ -226,7 +249,7 @@ function MainPage() {
       if (data.messages.length > 0) {
         const formattedMessages = data.messages.flatMap(msg => [
           { text: msg.usermessage, sender: "user", chatId, id: msg.id},
-          { text: msg.botmessage, sender: "bot", chatId, id:msg.id }
+          { text: msg.botmessage, sender: "bot", chatId, id: msg.id }
         ]);
         setMessages(formattedMessages);
       }
@@ -236,6 +259,185 @@ function MainPage() {
       setMessages([{ text: "Failed to load messages. Please try again.", sender: "bot", chatId }]);
     }
   };
+
+  const fetchAllMessages = async () => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/chats/messages`);
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to fetch all messages");
+      }
+      const data = await res.json();
+      setAllMessages(data["all messages"] || []);
+    } catch (error) {
+      console.error("Failed to fetch all messages:", error);
+      addNotification(error.message || "Failed to load messages for search", "error");
+    }
+  };
+
+  useEffect(() => {
+    if (!showSearchModal) return;
+
+    const timer = setTimeout(async () => {
+      if (!searchQuery.trim()) {
+        if (searchType === 'files') {
+          setSearchResults(uploadedFiles.map(file => ({
+            type: 'file',
+            filename: file.filename,
+            id: file.filename
+          })));
+        } else {
+          setSearchResults(chats.map(chat => ({
+            type: 'chat-list', 
+            chatId: chat.id,
+            chatName: chat.name,
+            id: chat.id
+          })));
+        }
+        setIsSearchLoading(false);
+        return;
+      }
+
+      setIsSearchLoading(true);
+      const query = searchQuery.toLowerCase();
+      
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      if (searchType === 'chats') {
+        const results = allMessages.filter(msg => 
+          msg.usermessage.toLowerCase().includes(query) || 
+          msg.botmessage.toLowerCase().includes(query)
+        );
+        
+        setSearchResults(results.map(msg => ({
+          type: 'chat-message', 
+          chatId: msg.chat_id,
+          userMessage: msg.usermessage,
+          botMessage: msg.botmessage,
+          id: msg.id,
+          highlightText: query
+        })));
+      } else if (searchType === 'files') {
+        const results = uploadedFiles.filter(file => 
+          file.filename.toLowerCase().includes(query)
+        );
+        
+        setSearchResults(results.map(file => ({
+          type: 'file',
+          filename: file.filename,
+          id: file.filename,
+          highlightText: query
+        })));
+      }
+      setIsSearchLoading(false);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, searchType, showSearchModal, allMessages, uploadedFiles, chats]);
+
+  const openSearchModal = useCallback((type) => {
+    setSearchType(type);
+    setSearchQuery("");
+    setIsSearchLoading(true);
+    
+    if (type === 'files') {
+      setSearchResults(uploadedFiles.map(file => ({
+        type: 'file',
+        filename: file.filename,
+        id: file.filename
+      })));
+    } else {
+      setSearchResults(chats.map(chat => ({
+        type: 'chat-list',
+        chatId: chat.id,
+        chatName: chat.name,
+        id: chat.id
+      })));
+    }
+    
+    setIsSearchLoading(false);
+    setShowSearchModal(true);
+  }, [uploadedFiles, chats]);
+
+  const handleSearchResultClick = async (result) => {
+    if (result.type === 'chat-list') {
+      const chat = chats.find(c => c.id === result.chatId);
+      if (chat) {
+        setSelectedChat(chat);
+        setShowSearchModal(false);
+      }
+    } else if (result.type === 'chat-message') {
+      const chat = chats.find(c => c.id === result.chatId);
+      if (chat) {
+        setSelectedChat(chat);
+        setChatLoading(true);
+        
+        try {
+          shouldScrollRef.current = false;
+          
+          const res = await fetch(`${BACKEND_URL}/chats/${chat.id}/messages`);
+          if (!res.ok) throw new Error("Failed to fetch messages");
+          
+          const data = await res.json();
+          const formattedMessages = data.messages.flatMap(msg => [
+            { 
+              text: msg.usermessage, 
+              sender: "user", 
+              chatId: chat.id, 
+              id: msg.id,
+              isHighlighted: msg.id === result.id
+            },
+            { 
+              text: msg.botmessage, 
+              sender: "bot", 
+              chatId: chat.id, 
+              id: msg.id,
+              isHighlighted: msg.id === result.id
+            }
+          ]);
+          
+          setMessages(formattedMessages);
+          
+          setTimeout(() => {
+            const highlightedElement = document.querySelector(`.message-wrapper.highlighted`);
+            if (highlightedElement) {
+              highlightedElement.scrollIntoView({ 
+                behavior: 'smooth', 
+                block: 'center' 
+              });
+              const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                  if (entry.isIntersecting) {
+                    entry.target.classList.add('flash-effect');
+                    
+                    setTimeout(() => {
+                      entry.target.classList.remove('flash-effect');
+                    }, 2000);
+                    
+                    observer.unobserve(entry.target);
+                  }
+                });
+              }, { threshold: 0.5 });
+              
+              observer.observe(highlightedElement);
+            }
+            shouldScrollRef.current = true;
+          }, 100);
+          
+        } catch (error) {
+          console.error("Error loading chat messages:", error);
+          addNotification(error.message, "error");
+        } finally {
+          setChatLoading(false);
+          setShowSearchModal(false);
+        }
+      }
+    } else if (result.type === 'file') {
+      window.open(`${BACKEND_URL}/files/${result.filename}`, '_blank');
+      setShowSearchModal(false);
+    }
+  };
+
 
   const handleCreateChat = async () => {
     setShowChatNameModal(true);
@@ -348,6 +550,13 @@ function MainPage() {
       const postData = await saveRes.json();
       const messageId = postData.id;
 
+      setAllMessages(prev => [...prev, {
+        chat_id: selectedChat.id,
+        usermessage: userText,
+        botmessage: data.response,
+        id: messageId
+      }]);
+
       setMessages(prev => {
         const updated = [...prev];
         updated.pop(); 
@@ -366,8 +575,9 @@ function MainPage() {
           id: messageId,
         };
 
-        updated.pop();
+        s
 
+        updated.pop();
         return [...updated, userMessage, botMessage];
       });
     } catch (error) {
@@ -387,7 +597,17 @@ function MainPage() {
     }
 
     try {
-      const backupMessages = [...messages]; 
+      if (originalMessage.trim() === messages[idx].text.trim()) {
+        setMessages(prev => {
+          const updated = [...prev];
+          if (updated[idx]) {
+            updated[idx].isEditing = false;
+            updated[idx].text = originalMessage
+          }
+          return updated;
+        });
+        return;
+      }
       setIsLoading(true);
 
       setMessages(prev => {
@@ -455,6 +675,16 @@ function MainPage() {
       const savedData = await saveRes.json();
       const newId = savedData.id;
 
+      setAllMessages(prev => {
+        const filtered = prev.filter(m => m.id !== msg.id);
+        return [...filtered, {
+          chat_id: msg.chatId,
+          usermessage: msg.text,
+          botmessage: data.response,
+          id: newId
+        }];
+      });
+
       setMessages(prev => {
         const updated = prev.filter(
           m => m.id !== msg.id && m.text !== "Typing..."
@@ -480,7 +710,7 @@ function MainPage() {
 
     } catch (error) {
       console.error("Error saving edited message:", error);
-      setMessages(backupMessages)
+      setMessages(messages)
       addNotification(error.message || "Error saving edited message", "error");
     } finally {
       setIsLoading(false);
@@ -679,13 +909,97 @@ function MainPage() {
         </div>
       )}
 
+      {showSearchModal && (
+        <div className="delete-confirm-modal">
+          <div className="modal-content search-modal">
+            <h3>Search {searchType === 'chats' ? 'Chats' : 'Files'}</h3>
+            <div className="search-input-container">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={`Search ${searchType === 'chats' ? 'chat messages' : 'files'}...`}
+                autoFocus
+              />
+            </div>
+            <div className="search-results">
+              {isSearchLoading ? (
+                <div className="loading-spinner">Loading...</div>
+              ) : searchResults.length > 0 ? (
+                searchResults.map((result, index) => (
+                  <div 
+                    key={index} 
+                    className="search-result-item"
+                    onClick={() => handleSearchResultClick(result)}
+                  >
+                    {result.type === 'chat-list' ? (
+                      <div className="search-result-header">
+                        <strong>Chat: {result.chatName}</strong>
+                      </div>
+                    ) : result.type === 'chat-message' ? (
+                      <>
+                        <div className="search-result-header">
+                          <strong>Chat: {chats.find(c => c.id === result.chatId)?.name || 'Untitled Chat'}</strong>
+                        </div>
+                        <div className="search-result-content">
+                          <p>
+                            <strong>You: </strong> 
+                            {highlightText(result.userMessage, result.highlightText)}
+                          </p>
+                          <p>
+                            <strong>Bot: </strong> 
+                            {highlightText(result.botMessage, result.highlightText)}
+                          </p>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="search-result-header">
+                        <strong>File: {highlightText(result.filename, result.highlightText)}</strong>
+                      </div>
+                    )}
+                  </div>
+                ))
+              ) : searchQuery ? (
+                <div className="no-results">No results found</div>
+              ) : (
+                <div className="no-results">
+                  {searchType === 'files' ? 'Showing all files' : 'Showing all chats'}
+                </div>
+              )}
+            </div>
+            <div className="modal-buttons">
+              <button
+                className="cancel-button"
+                onClick={() => setShowSearchModal(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <aside className="sidebar">
         <div className="section-header">
-          <h3>Chats</h3>
           <button className="action-button" onClick={handleCreateChat}>
             + New Chat
           </button>
+          <button 
+            className="action-button"
+            onClick={() => openSearchModal('chats')}
+            disabled={isLoading}
+          >
+            <div className="search-button">
+              <div className="search">
+                <Search size={15} />
+              </div>
+              <div>
+                Search Chats
+              </div> 
+            </div>
+          </button>
         </div>
+        <h3>Chats</h3>
         <ul className="chat-history">
           {chats.map((chat, index) => (
             <li
@@ -764,7 +1078,7 @@ function MainPage() {
                 </div>
               )}
               {messages.map((msg, idx) => (
-                <div key={idx} className={`message-wrapper ${msg.sender}`}>
+                <div key={idx}  className={`message-wrapper ${msg.sender} ${msg.isHighlighted ? 'highlighted' : ''}`}>
                   {msg.sender === 'user' && msg.isEditing ? (
                     <EditableTextArea
                       value={msg.text}
@@ -789,43 +1103,58 @@ function MainPage() {
                       autoFocus={true}
                     />
                   ) : (
-                    <div className={`message ${msg.sender}`}>
-                      {msg.text === "Typing..." ? (
-                        <TypingIndicator />
-                      ) : (
-                        <ReactMarkdown>{msg.text}</ReactMarkdown>
+                    <div className="message-parent">
+                      <div>
+                      {msg.sender === "bot" && msg.text !== "Typing..." && (
+                        <img
+                        className="bot-icon"
+                        src="health-svgrepo-com.svg"
+                        alt="Bot"
+                        width={27}
+                        height={27}
+                      />
                       )}
+                      </div>
+                      <div>
+                        <div className={`message ${msg.sender}`}>
+                          {msg.text === "Typing..." ? (
+                            <TypingIndicator />
+                          ) : (
+                            <ReactMarkdown>{msg.text}</ReactMarkdown>
+                          )}
+                        </div>
+                        <div className="message-actions">
+                          {msg.sender === 'user' && !msg.isEditing && (
+                            <button
+                              className="edit-message-button"
+                              onClick={(e) => {
+                                shouldScrollRef.current = false;
+
+                                const updatedMessages = messages.map((msg, i) => ({
+                                  ...msg,
+                                  isEditing: i === idx,  
+                                }));
+                                setOriginalMessage(msg.text)
+                                setMessages(updatedMessages);
+                              }}
+                              disabled={isLoading}
+                            >
+                              <Pencil size={18} color={isLoading ? "#ccc" : "#555"} />
+                            </button>
+                          )}
+                          {!msg.isEditing && (
+                            <button
+                              className="copy-message-button"
+                              onClick={() => copyToClipboard(msg.text)}
+                              disabled={isLoading && msg.sender === 'bot'}
+                            >
+                              <Copy size={18} color={isLoading && msg.sender === 'bot' ? "#ccc" : "#555"} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   )}
-                  <div className="message-actions">
-                    {msg.sender === 'user' && !msg.isEditing && (
-                      <button
-                        className="edit-message-button"
-                        onClick={(e) => {
-                          shouldScrollRef.current = false;
-
-                          const updatedMessages = messages.map((msg, i) => ({
-                            ...msg,
-                            isEditing: i === idx,  
-                          }));
-
-                          setMessages(updatedMessages);
-                        }}
-                        disabled={isLoading}
-                      >
-                        <Pencil size={18} color={isLoading ? "#ccc" : "#555"} />
-                      </button>
-                    )}
-                    {!msg.isEditing && (
-                      <button
-                        className="copy-message-button"
-                        onClick={() => copyToClipboard(msg.text)}
-                        disabled={isLoading}
-                      >
-                        <Copy size={18} color={isLoading ? "#ccc" : "#555"} />
-                      </button>
-                    )}
-                  </div>
                   {msg.sender === 'user' && msg.isEditing && (
                     <div className="edit-actions">
                       <button
@@ -877,7 +1206,6 @@ function MainPage() {
 
       <aside className="file-panel">
         <div className="section-header">
-          <h3>Files</h3>
           <button
             className="action-button"
             onClick={() => fileInputRef.current.click()}
@@ -891,7 +1219,21 @@ function MainPage() {
             onChange={handleFileUpload}
             accept=".pdf,application/pdf" 
           />
+          <button 
+            className="action-button"
+            onClick={() => openSearchModal('files')}
+          >
+            <div className="search-button">
+              <div className="search">
+                <Search size={15} />
+              </div>
+              <div>
+                Search Files
+              </div> 
+            </div>
+          </button>
         </div>
+        <h3>Files</h3>
         <ul>
           {uploadedFiles.map((file, index) => (
             <li key={index} className="file-item">

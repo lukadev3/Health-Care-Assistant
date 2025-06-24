@@ -218,6 +218,11 @@ async def get_messages(chat_id):
             messages.append(chat_message)
     return jsonify({"messages": messages})
 
+@app.route("/chats/messages", methods=["GET"])
+async def get_all_messages():
+    global all_chats_messages
+    return jsonify({"all messages": all_chats_messages})
+
 @app.route("/chats/<int:chat_id>/messages", methods=["POST"])
 async def add_message(chat_id):
     global all_chats_messages

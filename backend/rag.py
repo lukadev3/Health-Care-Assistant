@@ -53,12 +53,12 @@ def handle_upload(file_path: str, name: str) -> tuple[QueryEngineTool, str]:
 
         full_text = documents.to_text()
 
-        max_chunk_size = 1000 
+        max_chunk_size = 500 
         text_chunks = [full_text[i:i+max_chunk_size] for i in range(0, len(full_text), max_chunk_size)]
         chunked_documents = [Document(text=chunk) for chunk in text_chunks]
 
         node_parser = HierarchicalNodeParser.from_defaults(
-            chunk_sizes=[1024, 512, 128],  
+            chunk_sizes=[1024, 512, 128] 
         )
 
         all_nodes = []
@@ -78,12 +78,18 @@ def handle_upload(file_path: str, name: str) -> tuple[QueryEngineTool, str]:
         vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
         storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
+        batch_size = 160
+        batches = [leaf_nodes[i:i+batch_size] for i in range(0, len(leaf_nodes), batch_size)]
+
         automerging_index = VectorStoreIndex(
-            leaf_nodes,
+            batches[0],
             storage_context=storage_context,
             use_async=True,
             show_progress=True
         )
+
+        for i in range(1, len(batches)):
+            automerging_index.insert_nodes(batches[i])
         
         summary_index = SummaryIndex.from_documents([chunked_documents[0]])
         storage_context.docstore.add_documents(all_nodes)

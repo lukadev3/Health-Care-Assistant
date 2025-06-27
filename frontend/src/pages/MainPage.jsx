@@ -277,6 +277,8 @@ function MainPage() {
 
   useEffect(() => {
     if (!showSearchModal) return;
+    setIsSearchLoading(true);
+
 
     const timer = setTimeout(async () => {
       if (!searchQuery.trim()) {
@@ -298,12 +300,12 @@ function MainPage() {
         return;
       }
 
-      setIsSearchLoading(true);
       const query = searchQuery.toLowerCase();
       
       await new Promise(resolve => setTimeout(resolve, 500));
       
       if (searchType === 'chats') {
+
         const results = allMessages.filter(msg => 
           msg.usermessage.toLowerCase().includes(query) || 
           msg.botmessage.toLowerCase().includes(query)
@@ -488,6 +490,15 @@ function MainPage() {
       }
 
       setChats(prev => prev.filter(chat => chat.id !== chatToDelete));
+
+      setMessages(prev => {
+        if (selectedChat?.id === chatToDelete) {
+          return [];
+        }
+        return prev.filter(msg => msg.chatId !== chatToDelete);
+      });
+
+      setAllMessages(prev => prev.filter(msg => msg.chat_id !== chatToDelete));
       
       if (selectedChat?.id === chatToDelete) {
         const remainingChats = chats.filter(chat => chat.id !== chatToDelete);
@@ -574,8 +585,6 @@ function MainPage() {
           chatId: selectedChat.id,
           id: messageId,
         };
-
-        s
 
         updated.pop();
         return [...updated, userMessage, botMessage];
@@ -963,7 +972,7 @@ function MainPage() {
                 <div className="no-results">No results found</div>
               ) : (
                 <div className="no-results">
-                  {searchType === 'files' ? 'Showing all files' : 'Showing all chats'}
+                  {searchType === 'files' ? 'No uploaded files' : 'No created chats'}
                 </div>
               )}
             </div>
@@ -1000,70 +1009,76 @@ function MainPage() {
           </button>
         </div>
         <h3>Chats</h3>
-        <ul className="chat-history">
-          {chats.map((chat, index) => (
-            <li
-              key={chat.id}
-              className={selectedChat?.id === chat.id ? "active" : ""}
-              onClick={(e) => {
-                if (isLoading) return;
-                if (!e.target.closest('.chat-options-trigger') && 
-                    !e.target.closest('.chat-options-dropdown') &&
-                    !e.target.closest('.chat-name-input')) {
-                  setSelectedChat(chat);
-                }
-              }}
-            >
-              <div className="chat-row">
-                {editingChatId === chat.id ? (
-                  <input
-                    type="text"
-                    className="chat-name-input"
-                    value={editingChatName}
-                    onChange={(e) => setEditingChatName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") saveChatName();
-                      if (e.key === "Escape") cancelEditingChat();
-                    }}
-                    onBlur={saveChatName}
-                    autoFocus
-                  />
-                ) : (
-                  <span className="chat-name">{chat.name || "Untitled Chat"}</span>
-                )}
-                <div
-                  className="chat-options-trigger"
-                  onClick={(e) => handleDropdownToggle('chat', index, e)}
+          {chats.length > 0 ? (
+            <ul className="chat-history">
+              {chats.map((chat, index) => (
+                <li
+                  key={chat.id}
+                  className={selectedChat?.id === chat.id ? "active" : ""}
+                  onClick={(e) => {
+                    if (isLoading) return;
+                    if (!e.target.closest('.chat-options-trigger') && 
+                        !e.target.closest('.chat-options-dropdown') &&
+                        !e.target.closest('.chat-name-input')) {
+                      setSelectedChat(chat);
+                    }
+                  }}
                 >
-                  ⋯
-                </div>
-              </div>
-              {openDropdown.type === 'chat' && openDropdown.index === index && (
-                <div className="chat-options-dropdown">
-                  <div
-                    className="dropdown-option other-option"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      startEditingChat(chat);
-                    }}
-                  >
-                    Rename
+                  <div className="chat-row">
+                    {editingChatId === chat.id ? (
+                      <input
+                        type="text"
+                        className="chat-name-input"
+                        value={editingChatName}
+                        onChange={(e) => setEditingChatName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") saveChatName();
+                          if (e.key === "Escape") cancelEditingChat();
+                        }}
+                        onBlur={saveChatName}
+                        autoFocus
+                      />
+                    ) : (
+                      <span className="chat-name">{chat.name || "Untitled Chat"}</span>
+                    )}
+                    <div
+                      className="chat-options-trigger"
+                      onClick={(e) => handleDropdownToggle('chat', index, e)}
+                    >
+                      ⋯
+                    </div>
                   </div>
-                  <div
-                    className="dropdown-option delete-option"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setChatToDelete(chat.id);
-                      setOpenDropdown({ type: null, index: null });
-                    }}
-                  >
-                    🗑 Delete
-                  </div>
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
+                  {openDropdown.type === 'chat' && openDropdown.index === index && (
+                    <div className="chat-options-dropdown">
+                      <div
+                        className="dropdown-option other-option"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          startEditingChat(chat);
+                        }}
+                      >
+                        Rename
+                      </div>
+                      <div
+                        className="dropdown-option delete-option"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setChatToDelete(chat.id);
+                          setOpenDropdown({ type: null, index: null });
+                        }}
+                      >
+                        🗑 Delete
+                      </div>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="no-content">
+              No chats yet. Start a new conversation!
+            </div>
+          )}
       </aside>
       <main className="chat-center">
         {selectedChat ? (
@@ -1097,6 +1112,7 @@ function MainPage() {
                           shouldScrollRef.current = false;
                           const updatedMessages = [...messages];
                           updatedMessages[idx].isEditing = false;
+                          updatedMessages[idx].text = originalMessage
                           setMessages(updatedMessages);
                         }
                       }}
@@ -1172,6 +1188,7 @@ function MainPage() {
                           shouldScrollRef.current = false;
                           const updatedMessages = [...messages];
                           updatedMessages[idx].isEditing = false;
+                          updatedMessages[idx].text = originalMessage
                           setMessages(updatedMessages);
                         }}
                       >
@@ -1234,38 +1251,44 @@ function MainPage() {
           </button>
         </div>
         <h3>Files</h3>
-        <ul>
-          {uploadedFiles.map((file, index) => (
-            <li key={index} className="file-item">
-              <div className="file-row">
-                <a href={`${BACKEND_URL}/files/${file.filename}`} target="_blank" rel="noopener noreferrer" className="file-link">
-                  {file.filename}
-                </a>
-                <div 
-                  className="file-options-trigger"
-                  onClick={(e) => handleDropdownToggle('file', index, e)}
-                >
-                  ⋯
-                </div>
-              </div>
-              {openDropdown.type === 'file' && openDropdown.index === index && (
-                <div className="file-options-dropdown">
+        {uploadedFiles.length > 0 ? (
+          <ul>
+            {uploadedFiles.map((file, index) => (
+              <li key={index} className="file-item">
+                <div className="file-row">
+                  <a href={`${BACKEND_URL}/files/${file.filename}`} target="_blank" rel="noopener noreferrer" className="file-link">
+                    {file.filename}
+                  </a>
                   <div 
-                    className="dropdown-option delete-option"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setFileToDelete(file.filename);
-                      setShowDeleteConfirm(true);
-                      setOpenDropdown({ type: null, index: null });
-                    }}
+                    className="file-options-trigger"
+                    onClick={(e) => handleDropdownToggle('file', index, e)}
                   >
-                    🗑 Delete
+                    ⋯
                   </div>
                 </div>
-              )}
-            </li>
-          ))}
-        </ul>
+                {openDropdown.type === 'file' && openDropdown.index === index && (
+                  <div className="file-options-dropdown">
+                    <div 
+                      className="dropdown-option delete-option"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setFileToDelete(file.filename);
+                        setShowDeleteConfirm(true);
+                        setOpenDropdown({ type: null, index: null });
+                      }}
+                    >
+                      🗑 Delete
+                    </div>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="no-content">
+            No files yet. Upload a new file!
+          </div>
+        )}
       </aside>
     </div>
   );

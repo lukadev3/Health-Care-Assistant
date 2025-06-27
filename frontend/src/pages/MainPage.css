@@ -614,7 +614,7 @@ ul {
   line-height: 1.5;
   font-weight: 400;
   width: 300px;
-  height: 30px;
+  height: 35px;
 }
 
 .modal-buttons {
@@ -850,6 +850,13 @@ ul {
 @keyframes loading-spinner {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+.no-content {
+  padding: 1rem;
+  text-align: center;
+  color: #666;
+  font-style: italic;
 }
 
 

@@ -1,23 +1,19 @@
 import os
 import chromadb
-from llama_cloud import MessageRole
+from llmsherpa.readers import LayoutPDFReader
 from llama_index.core import Document
 from llama_index.core import VectorStoreIndex, StorageContext, SummaryIndex
 from llama_index.vector_stores.chroma import ChromaVectorStore
-from llama_index.core import SimpleDirectoryReader
 from llama_index.core import Settings
 from llama_index.llms.ollama import Ollama
 from llama_index.embeddings.ollama import OllamaEmbedding
 from llama_index.core.node_parser import HierarchicalNodeParser, get_leaf_nodes
-from llama_index.core.query_engine import RouterQueryEngine, ToolRetrieverRouterQueryEngine
-from llama_index.core.objects import ObjectIndex, SimpleToolNodeMapping, ObjectRetriever
-from llama_index.core.selectors import LLMMultiSelector
+from llama_index.core.query_engine import ToolRetrieverRouterQueryEngine
+from llama_index.core.objects import ObjectIndex
 from llama_index.core.tools import QueryEngineTool
-from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-from llama_index.core.memory import ChatMemoryBuffer
 from llama_index.core import load_index_from_storage
 from dotenv import load_dotenv
-from utils import extract_text_from_pdf, clean_text, make_tool
+from utils import make_tool
 
 load_dotenv()
 
@@ -26,9 +22,9 @@ STORAGE_CONTEXT_PATH = os.getenv("STORAGE_CONTEXT_PATH")
 EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME")
 LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME")
 BASE_URL = os.getenv("BASE_URL")
+LLMSHERPA_API_URL = os.getenv("LLMSHERPA_API_URL")
 
-#Settings.embed_model =OllamaEmbedding(model_name=EMBEDDING_MODEL_NAME, base_url=BASE_URL)
-Settings.embed_model =HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
+Settings.embed_model =OllamaEmbedding(model_name=EMBEDDING_MODEL_NAME, base_url=BASE_URL)
 Settings.llm = Ollama(model=LLM_MODEL_NAME, request_timeout=360, base_url=BASE_URL)
 
 chroma_client = chromadb.PersistentClient(path=CHROMA_DB_PATH)
@@ -48,39 +44,62 @@ def load_query_tool(name: str, description: str) -> QueryEngineTool:
     return make_tool(automerging_index, name, description)
 
 
-def handle_upload(file_path: str, name: str) -> QueryEngineTool:
+def handle_upload(file_path: str, name: str) -> tuple[QueryEngineTool, str]:
+    """Process uploaded PDF in smaller batches with enhanced error handling"""
+    try:
 
-    """Process uploaded PDF, create index and return QueryEngineTool."""
+        reader = LayoutPDFReader(LLMSHERPA_API_URL)
+        documents = reader.read_pdf(path_or_url=file_path)
 
-    full_text = extract_text_from_pdf(file_path)
-    cleaned_text = clean_text(full_text)
+        full_text = documents.to_text()
 
-    #print(file_path, name)
+        max_chunk_size = 1000 
+        text_chunks = [full_text[i:i+max_chunk_size] for i in range(0, len(full_text), max_chunk_size)]
+        chunked_documents = [Document(text=chunk) for chunk in text_chunks]
 
-    #documents = SimpleDirectoryReader(input_files=[file_path]).load_data()
-    #document = Document(text="\n\n".join([doc.text for doc in documents]))
-    document = Document(text=cleaned_text)
+        node_parser = HierarchicalNodeParser.from_defaults(
+            chunk_sizes=[1024, 512, 128],  
+        )
 
-    chunk_sizes = [2048, 512, 128]
-    node_parser = HierarchicalNodeParser.from_defaults(chunk_sizes=chunk_sizes)
+        all_nodes = []
+        for i in range(0, len(chunked_documents), 1):
+            batch_docs = chunked_documents[i:i+1]
+            nodes = node_parser.get_nodes_from_documents(batch_docs)
+            all_nodes.extend(nodes)
+        
+        leaf_nodes = get_leaf_nodes(all_nodes)
 
-    nodes = node_parser.get_nodes_from_documents([document])
-    leaf_nodes = get_leaf_nodes(nodes)
+        chroma_collection = chroma_client.get_or_create_collection(
+            name,
+            metadata={
+                "hnsw:space": "cosine",
+            }
+        )
+        vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
+        storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
-    chroma_collection = chroma_client.get_or_create_collection(name)
-    vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
-    storage_context = StorageContext.from_defaults(vector_store=vector_store)
+        automerging_index = VectorStoreIndex(
+            leaf_nodes,
+            storage_context=storage_context,
+            use_async=True,
+            show_progress=True
+        )
+        
+        summary_index = SummaryIndex.from_documents([chunked_documents[0]])
+        storage_context.docstore.add_documents(all_nodes)
+        storage_context.persist(persist_dir=f"{STORAGE_CONTEXT_PATH}/{name}")
 
-    automerging_index = VectorStoreIndex(leaf_nodes, storage_context=storage_context, use_async=True)
-    summary_index = SummaryIndex.from_documents([document])
-    storage_context.docstore.add_documents(nodes)
-    storage_context.persist(persist_dir=f"{STORAGE_CONTEXT_PATH}/{name}")
+        query_engine = summary_index.as_query_engine()
+        description = query_engine.query("Give short summary of this drug.")
+        print(description)
+        description_text = str(description).strip()
 
-    query_engine = summary_index.as_query_engine()
-    description = query_engine.query("What is document about? Give me answer in four concise sentences.")
-    print(description)
+        return make_tool(automerging_index, name, description_text), description_text
 
-    return make_tool(automerging_index, name, str(description)), str(description)
+    except Exception as e:
+        error_msg = f"Error processing {name}: {str(e)}"
+        print(error_msg)
+        raise ValueError(error_msg) from e
 
 def query_document(query: str, tools: list, chat_history: list[tuple[str, str]]) -> str:
 
@@ -91,21 +110,9 @@ def query_document(query: str, tools: list, chat_history: list[tuple[str, str]])
         "You are a licensed medical doctor and a professional assistant, specialized in pharmacology and drug usage.\n"
         "You have access to multiple specialized tools, each representing detailed documentation and clinical guidelines for a specific drug.\n"
         "Your role is to provide accurate, evidence-based, and easy-to-understand medical advice to patients and users based strictly on the contents of these tools.\n\n"
-
-        "Guidelines for your answers:\n"
-        "- Always use the full context of the conversation to understand what the user is referring to.\n"
-        "- You must track the drug(s) mentioned earlier in the conversation to interpret follow-up questions correctly.\n"
-        "- If the user asks a question like 'how should I use it' or 'does it have side effects', infer what 'it' refers to based on previous context.\n"
-        "- Use **only the most relevant tool**, based on the most recently discussed or clearly referenced drug.\n"
-        "- Do **not combine** information from multiple tools unless the user clearly mentions multiple drugs.\n"
-        "- When a new drug is introduced, switch to that drug as the main context.\n"
-        "- Do not speculate or answer outside the information found in the uploaded documents.\n"
-        "- Avoid referencing tools or data sources by name—respond naturally, like a real doctor would.\n"
-        "- Use clear, human-friendly language while maintaining professionalism and medical precision.\n"
-        "- Always prioritize patient safety and clarity in communication.\n\n"
+        "USE ONLY PROVIDED TOOLS TO ANSWER THE QUESTION!!!\n\n"
 
         f"history chat: {history_text}"
-
         f"query: {query}"
     )
 

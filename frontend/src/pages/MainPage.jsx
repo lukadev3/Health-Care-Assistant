@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import "./MainPage.css";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from 'remark-gfm'
 import { Copy, Pencil, Search } from 'lucide-react';
 import { EditableTextArea } from "../components/EditableTextArea";
 import CustomInputArea from '../components/CustomInputArea';
@@ -550,6 +551,7 @@ function MainPage() {
         body: JSON.stringify({
           usermessage: userText,
           botmessage: data.response,
+          context: data.context
         }),
       });
 
@@ -565,6 +567,7 @@ function MainPage() {
         chat_id: selectedChat.id,
         usermessage: userText,
         botmessage: data.response,
+        context: data.context,
         id: messageId
       }]);
 
@@ -843,6 +846,10 @@ function MainPage() {
               placeholder="Enter chat name (optional)"
               onKeyDown={(e) => {
                 if (e.key === "Enter") confirmCreateChat();
+                if (e.key === "Escape") {
+                  setShowChatNameModal(false);
+                  setNewChatName("");
+                }
               }}
             />
             <div className="modal-buttons">
@@ -887,6 +894,18 @@ function MainPage() {
                 Cancel
               </button>
             </div>
+            <input
+              type="text"
+              style={{ position: 'absolute', opacity: 0, height: 0, width: 0, pointerEvents: 'none' }}
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  confirmDeleteChat();
+                } else if (e.key === 'Escape') {
+                  setChatToDelete(null);
+                }
+              }}
+            />
           </div>
         </div>
       )}
@@ -914,10 +933,22 @@ function MainPage() {
                 Cancel
               </button>
             </div>
+            <input
+              type="text"
+              style={{ position: 'absolute', opacity: 0, height: 0, width: 0, pointerEvents: 'none' }}
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleDeleteFile(fileToDelete);
+                } else if (e.key === 'Escape') {
+                  setShowDeleteConfirm(false);
+                  setFileToDelete(null);
+                }
+              }}
+            />
           </div>
         </div>
       )}
-
       {showSearchModal && (
         <div className="delete-confirm-modal">
           <div className="modal-content search-modal">
@@ -1136,7 +1167,9 @@ function MainPage() {
                           {msg.text === "Typing..." ? (
                             <TypingIndicator />
                           ) : (
-                            <ReactMarkdown>{msg.text}</ReactMarkdown>
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              {msg.text}
+                            </ReactMarkdown>
                           )}
                         </div>
                         <div className="message-actions">

@@ -171,13 +171,49 @@ ul {
   box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.05), 0 6px 20px 0 rgba(0, 0, 0, 0.05);
 }
 
-.message.bot ol, .message.user ol, .message.bot ul, .message.user ul{
-  margin: 0;
+.message ul {
+  list-style-type: disc;
+  margin-left: 20px;
+  padding-left: 0;
+}
+
+.message ol{
+  list-style-type: decimal;
+  margin-left: 20px;
+  padding-left: 0;
+}
+
+.message li {
+  margin-bottom: 6px;
 }
 
 .message.bot p, .message.user p{
   margin: 0;
   padding: 5px;
+}
+
+.message table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-top: 12px;
+  font-size: 14px;
+}
+
+.message th,
+.message td {
+  border: 1px solid #ddd;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.message th {
+  background-color: #f9fafb;
+  font-weight: 600;
+  color: #111827;
+}
+
+.message tr:nth-child(even) {
+  background-color: #f3f4f6;
 }
 
 .message-actions {
@@ -721,8 +757,6 @@ ul {
   pointer-events: none;
   display: block;
 }
-
-/** SEARCH MODAL **/
 
 .search-modal {
   max-width: 600px;

@@ -1,3 +1,5 @@
 Kada se radi preko RouterQueryEngine podrzava streaming, daje detaljnije odgovore ali ne moze da poziva vise toolova za razlicite dokumente.
 Kada se radi preko SubQuestionQueryEngine daje detaljne odgovore, bira dobro toolove za razlicite dokumente ali ne podrzava streaming odgovora. (brlja ponekad)
 Agent mi brlja uvek odgovore, ne podrzava streaming.
+ODRADI DA SE KONTEKST CUVA U MEMORIJI, DA SE SA FRONTA SALJE KONTEKST, PITANJE KORISNIKA I ODGOVOR BOTA ZA EVALUACIJU, TAKODJE NEKA SE OMOGUCI KORISNIKU DA MORA
+DA UNESE GROUND TRUTH DA BI SE DOBILI RELEVANTNI REZULTATI

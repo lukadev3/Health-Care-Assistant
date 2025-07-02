@@ -151,8 +151,8 @@ async def query_pdf():
             conversation = (chat['usermessage'], chat['botmessage'])
             chat_history.append(conversation)
     try:
-        response = query_document(query, tools, chat_history)
-        return jsonify({"response": response})
+        response, context = query_document(query, tools, chat_history)
+        return jsonify({"response": response, "context": context})
     except Exception as e:
         return jsonify({"error": f"An error occurred while generating a response: {str(e)}"}), 500
     
@@ -229,11 +229,12 @@ async def add_message(chat_id):
     data = await request.get_json()
     usermessage = data.get("usermessage")
     botmessage = data.get("botmessage")
+    context = data.get("context")
 
     if not usermessage or not botmessage:
         return jsonify({"error": "Both usermessage and botmessage are required"}), 400
     try:
-        message_id = insert_chat_message(chat_id, usermessage, botmessage)
+        message_id = insert_chat_message(chat_id, usermessage, botmessage, context)
         all_chats_messages = get_all_chat_messages()
         return jsonify({"message": "Message added successfully", "id": message_id})
     except Exception as e:

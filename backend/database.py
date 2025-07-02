@@ -58,6 +58,7 @@ def init_db():
             chat_id INTEGER NOT NULL,
             usermessage TEXT NOT NULL,
             botmessage TEXT NOT NULL,
+            context TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(chat_id) REFERENCES chat(id) ON DELETE CASCADE
         );
@@ -109,12 +110,12 @@ def delete_chat(chat_id):
 
 # ---------------------------- Chat Messages ----------------------------
 
-def insert_chat_message(chat_id, usermessage, botmessage):
+def insert_chat_message(chat_id, usermessage, botmessage, context):
     db = DatabaseSingleton()
     db.execute("""
-        INSERT INTO chat_messages (chat_id, usermessage, botmessage)
-        VALUES (?, ?, ?)
-    """, (chat_id, usermessage, botmessage))
+        INSERT INTO chat_messages (chat_id, usermessage, botmessage, context)
+        VALUES (?, ?, ?, ?)
+    """, (chat_id, usermessage, botmessage, context))
     return db.cursor.lastrowid
 
 def get_chat_messages(chat_id):
@@ -124,8 +125,8 @@ def get_chat_messages(chat_id):
 
 def get_all_chat_messages():
     db = DatabaseSingleton()
-    rows = db.fetchall("SELECT id, chat_id, usermessage, botmessage FROM chat_messages")
-    return [{'id': r[0], 'chat_id':r[1], 'usermessage': r[2], 'botmessage': r[3]} for r in rows]
+    rows = db.fetchall("SELECT id, chat_id, usermessage, botmessage, context FROM chat_messages")
+    return [{'id': r[0], 'chat_id':r[1], 'usermessage': r[2], 'botmessage': r[3], 'context': r[4]} for r in rows]
 
 def delete_messages_after(message_id, chat_id):
     db = DatabaseSingleton()

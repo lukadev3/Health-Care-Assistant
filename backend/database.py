@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import json
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -112,6 +113,8 @@ def delete_chat(chat_id):
 
 def insert_chat_message(chat_id, usermessage, botmessage, context):
     db = DatabaseSingleton()
+    if isinstance(context, list):
+        context = json.dumps(context)
     db.execute("""
         INSERT INTO chat_messages (chat_id, usermessage, botmessage, context)
         VALUES (?, ?, ?, ?)
@@ -126,7 +129,20 @@ def get_chat_messages(chat_id):
 def get_all_chat_messages():
     db = DatabaseSingleton()
     rows = db.fetchall("SELECT id, chat_id, usermessage, botmessage, context FROM chat_messages")
-    return [{'id': r[0], 'chat_id':r[1], 'usermessage': r[2], 'botmessage': r[3], 'context': r[4]} for r in rows]
+    messages = []
+    for r in rows:
+        try:
+            context = json.loads(r[4])
+        except (json.JSONDecodeError, TypeError):
+            context = []  
+        messages.append({
+            'id': r[0],
+            'chat_id': r[1],
+            'usermessage': r[2],
+            'botmessage': r[3],
+            'context': context
+        })
+    return messages
 
 def delete_messages_after(message_id, chat_id):
     db = DatabaseSingleton()

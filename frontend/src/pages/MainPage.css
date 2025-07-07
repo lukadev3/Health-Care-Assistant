@@ -235,9 +235,41 @@ ul {
   justify-content: flex-end; 
 }
 
+.message-actions {
+  display: flex;
+}
+
+.action-wrapper {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.tooltip-text {
+  position: absolute;
+  top: 100%;
+  margin-top: 4px;
+  background-color: #f1f1f1;
+  color: #333;
+  border: 1px solid #7c7c7c;
+  border-radius: 10px;
+  padding: 2px 6px;
+  font-size: 12px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease-in-out;
+  z-index: 10;
+}
+
+.action-wrapper:hover .tooltip-text {
+  opacity: 1;
+}
 
 .edit-message-button,
-.copy-message-button {
+.copy-message-button,
+.evaluate-message-button {
   background: none;
   border: none;
   cursor: pointer;
@@ -248,10 +280,9 @@ ul {
   padding: 8px;
 }
 
-.edit-message-button:hover, .copy-message-button:hover{
+.edit-message-button:hover, .copy-message-button:hover, .evaluate-message-button:hover{
   background-color: #eeeeee;
 }
-
 
 .edit-actions {
   display: flex;

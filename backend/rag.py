@@ -14,6 +14,16 @@ from llama_index.core.tools import QueryEngineTool
 from llama_index.core import load_index_from_storage
 from dotenv import load_dotenv
 from utils import make_automerging_index_tool
+from ragas import evaluate
+from ragas.metrics import (
+    faithfulness,
+    answer_relevancy,
+    context_recall,
+    context_precision,
+)
+from ragas.llms import LlamaIndexLLMWrapper
+from ragas.embeddings import LlamaIndexEmbeddingsWrapper
+from datasets import Dataset
 
 load_dotenv()
 
@@ -26,15 +36,22 @@ BASE_URL = os.getenv("BASE_URL")
 LLMSHERPA_API_URL = os.getenv("LLMSHERPA_API_URL")
 
 Settings.embed_model =OllamaEmbedding(model_name=EMBEDDING_MODEL_NAME, base_url=BASE_URL)
-Settings.llm = Ollama(model=LLM_MODEL_NAME, request_timeout=360, base_url=BASE_URL, temperature=0.2)
+Settings.llm = Ollama(model=LLM_MODEL_NAME, request_timeout=360, base_url=BASE_URL)
 evaluate_llm = Ollama(model=EVALUATE_MODEL_NAME, request_timeout=360, base_url=BASE_URL)
 
 chroma_client = chromadb.PersistentClient(path=CHROMA_DB_PATH)
 
 def load_query_tool(name: str, description: str) -> QueryEngineTool:
+    """
+    Load an existing index from ChromaDB and return a QueryEngineTool.
 
-    """Load documents from ChromaDB and create QueryEngineTool."""
+    Args:
+        name (str): Name of the document collection.
+        description (str): Short summary of the document content.
 
+    Returns:
+        QueryEngineTool: Tool used for querying the indexed documents.
+    """
     chroma_collection = chroma_client.get_or_create_collection(name)
     vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
     storage_context = StorageContext.from_defaults(
@@ -47,9 +64,20 @@ def load_query_tool(name: str, description: str) -> QueryEngineTool:
 
 
 def handle_upload(file_path: str, name: str) -> tuple[QueryEngineTool, str]:
-    """Process uploaded PDF with enhanced error handling"""
-    try:
+    """
+    Handle PDF upload, parse document, build vector and summary indexes, and return a query tool.
 
+    Args:
+        file_path (str): Path to the uploaded PDF.
+        name (str): Name/identifier for the document collection.
+
+    Returns:
+        tuple: (QueryEngineTool, document description summary)
+
+    Raises:
+        ValueError: If there is an error during processing.
+    """
+    try:
         reader = LayoutPDFReader(LLMSHERPA_API_URL)
         documents = reader.read_pdf(path_or_url=file_path)
 
@@ -101,11 +129,28 @@ def handle_upload(file_path: str, name: str) -> tuple[QueryEngineTool, str]:
         error_msg = f"Error processing {name}: {str(e)}"
         print(error_msg)
         raise ValueError(error_msg) from e
+    
+def delete_document(name: str):
+    """
+    Delete a document collection from ChromaDB.
 
-def query_document(query: str, tools: list, chat_history: list[tuple[str, str]]) -> str:
+    Args:
+        name (str): Name of the document collection to delete.
+    """
+    chroma_client.delete_collection(name)
 
-    """Answer the query using ToolRetrieverRouterQueryEngine with multiple tools."""
+def query_document(query: str, tools: list, chat_history: list[tuple[str, str]]) -> tuple[str, list]:
+    """
+    Run a structured medical query against a set of tools using ToolRetrieverRouterQueryEngine.
 
+    Args:
+        query (str): User's medical query.
+        tools (list): List of QueryEngineTools.
+        chat_history (list[tuple[str, str]]): Prior conversation history.
+
+    Returns:
+        tuple: (answer string, list of context nodes used)
+    """
     history_text = "\n".join([f"User: {user}\nAssistant: {assistant}" for user, assistant in chat_history])
     prompt = (
         "You are a licensed medical doctor and professional assistant, specialized in pharmacology and drug usage.\n"
@@ -143,18 +188,53 @@ def query_document(query: str, tools: list, chat_history: list[tuple[str, str]])
         router_engine = ToolRetrieverRouterQueryEngine(
             retriever=retriever,
         )
+
+        print(f"history: {history_text}, query: {query}")
         response = router_engine.query(prompt)
-        context = "\n\n".join([node.node.text for node in response.source_nodes])
+        print(response)
+        context = [node.node.text for node in response.source_nodes]
         return str(response), context
     except Exception as e:
         return (
             "⚠️ I encountered an error processing your request. "
-            f"Please try rephrasing your question or ask about a different topic: {e}"
+            f"Please try rephrasing your question or ask about a different topic: {e}", []
         )
-    
-def delete_document(name: str):
 
-    """Delete a document from ChromaDB."""
+def evaluate_sample(question: str, context: list[str], answer: str, ground_truth: str, llm, embeddings):
+    """
+    Evaluates a single RAG sample using all available RAGAS metrics.
 
-    chroma_client.delete_collection(name)
+    Args:
+        question (str): User question.
+        context (list[str]): List of context passages retrieved by retriever.
+        answer (str): LLM-generated answer.
+        ground_truth (str): True/expected answer (if known).
+
+    Returns:
+        pd.DataFrame: Evaluation scores for each metric.
+    """
+
+    data = {
+        "question": [question],
+        "contexts": [context],
+        "answer": [answer],
+        "ground_truth": [ground_truth]
+    }
+
+    dataset = Dataset.from_dict(data)
+
+    result = evaluate(
+        llm=LlamaIndexLLMWrapper(llm),
+        embeddings=LlamaIndexEmbeddingsWrapper(embeddings),
+        dataset = dataset, 
+        metrics=[
+            context_precision,
+            context_recall,
+            faithfulness,
+            answer_relevancy,
+        ],
+    )
+
+    return result.to_pandas().T
+
 

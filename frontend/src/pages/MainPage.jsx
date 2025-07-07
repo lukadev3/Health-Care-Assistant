@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import "./MainPage.css";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from 'remark-gfm'
-import { Copy, Pencil, Search } from 'lucide-react';
+import { Copy, Pencil, Search, FileCheck } from 'lucide-react';
 import { EditableTextArea } from "../components/EditableTextArea";
 import CustomInputArea from '../components/CustomInputArea';
 
@@ -602,6 +602,14 @@ function MainPage() {
   };
 
   const saveEditedMessage = async (idx) => {
+
+    const backupMessages = messages.map((msg, i) => {
+      if (i === idx) {
+        return { ...msg, text: originalMessage, isEditing: false };
+      }
+      return msg;
+    });
+
     const msg = messages[idx];
     if (!msg.id || !msg.chatId) {
       console.error("Message id or chatId missing");
@@ -676,6 +684,7 @@ function MainPage() {
         body: JSON.stringify({
           usermessage: msg.text,
           botmessage: data.response,
+          context: data.context 
         }),
       });
 
@@ -693,6 +702,7 @@ function MainPage() {
           chat_id: msg.chatId,
           usermessage: msg.text,
           botmessage: data.response,
+          context: data.context,
           id: newId
         }];
       });
@@ -722,7 +732,7 @@ function MainPage() {
 
     } catch (error) {
       console.error("Error saving edited message:", error);
-      setMessages(messages)
+      setMessages(backupMessages);
       addNotification(error.message || "Error saving edited message", "error");
     } finally {
       setIsLoading(false);
@@ -1174,31 +1184,49 @@ function MainPage() {
                         </div>
                         <div className="message-actions">
                           {msg.sender === 'user' && !msg.isEditing && (
-                            <button
-                              className="edit-message-button"
-                              onClick={(e) => {
-                                shouldScrollRef.current = false;
-
-                                const updatedMessages = messages.map((msg, i) => ({
-                                  ...msg,
-                                  isEditing: i === idx,  
-                                }));
-                                setOriginalMessage(msg.text)
-                                setMessages(updatedMessages);
-                              }}
-                              disabled={isLoading}
-                            >
-                              <Pencil size={18} color={isLoading ? "#ccc" : "#555"} />
-                            </button>
+                            <div className="action-wrapper">
+                              <button
+                                className="edit-message-button"
+                                onClick={(e) => {
+                                  shouldScrollRef.current = false;
+                                  const updatedMessages = messages.map((msg, i) => ({
+                                    ...msg,
+                                    isEditing: i === idx,
+                                  }));
+                                  setOriginalMessage(msg.text);
+                                  setMessages(updatedMessages);
+                                }}
+                                disabled={isLoading}
+                              >
+                                <Pencil size={18} color={isLoading ? "#ccc" : "#555"} />
+                              </button>
+                              <div className="tooltip-text">Edit</div>
+                            </div>
                           )}
+
+                          {msg.sender === 'user' && !msg.isEditing && (
+                            <div className="action-wrapper">
+                              <button
+                                className="evaluate-message-button"
+                                disabled={isLoading}
+                              >
+                                <FileCheck size={18} color={isLoading ? "#ccc" : "#555"} />
+                              </button>
+                              <div className="tooltip-text">Evaluate</div>
+                            </div>
+                          )}
+
                           {!msg.isEditing && (
-                            <button
-                              className="copy-message-button"
-                              onClick={() => copyToClipboard(msg.text)}
-                              disabled={isLoading && msg.sender === 'bot'}
-                            >
-                              <Copy size={18} color={isLoading && msg.sender === 'bot' ? "#ccc" : "#555"} />
-                            </button>
+                            <div className="action-wrapper">
+                              <button
+                                className="copy-message-button"
+                                onClick={() => copyToClipboard(msg.text)}
+                                disabled={isLoading && msg.sender === 'bot'}
+                              >
+                                <Copy size={18} color={isLoading && msg.sender === 'bot' ? "#ccc" : "#555"} />
+                              </button>
+                              <div className="tooltip-text">Copy</div>
+                            </div>
                           )}
                         </div>
                       </div>

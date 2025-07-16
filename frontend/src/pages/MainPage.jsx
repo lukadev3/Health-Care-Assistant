@@ -18,6 +18,9 @@ function TypingIndicator() {
 
 function MainPage() {
   const [showSearchModal, setShowSearchModal] = useState(false);
+  const [showEvaluationModal, setShowEvaluationModal] = useState(false);
+  const [groundTruth, setGroundTruth] = useState("");
+  const [currentEvalIndex, setCurrentEvalIndex] = useState(null);
   const [isSearchLoading, setIsSearchLoading] = useState(false);
   const [searchType, setSearchType] = useState(null); 
   const [searchQuery, setSearchQuery] = useState("");
@@ -44,12 +47,24 @@ function MainPage() {
     type: null, 
     index: null
   });
-
+  const [isEvaluating, setIsEvaluating] = useState(false);
+  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
+  const [evaluationResult, setEvaluationResult] = useState(null); 
+  
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
   const chatNameInputRef = useRef(null);
+  const groundTruthInputRef = useRef(null);
   const shouldScrollRef = useRef(true);
   const inputRef = useRef();
+  const loadingMessages = [
+    "Analyzing answer...",
+    "Comparing ground truth...",
+    "Measuring semantic similarity...",
+    "Consulting LLM...",
+    "Almost done..."
+  ];
+  const evaluationKeys = ["faithfulness", "answer_relevancy", "context_precision", "context_recall"];
 
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
@@ -171,6 +186,25 @@ function MainPage() {
       setMessages([]);
     }
   }, [selectedChat?.id]);
+
+  useEffect(() => {
+    let interval;
+    if (isEvaluating) {
+      setLoadingMessageIndex(0); 
+      interval = setInterval(() => {
+        setLoadingMessageIndex((prev) => {
+          if (prev < loadingMessages.length - 1) {
+            return prev + 1;
+          } else {
+            clearInterval(interval); 
+            return prev;
+          }
+        });
+      }, 18000); 
+    }
+    return () => clearInterval(interval); 
+  }, [isEvaluating]);
+
 
   const handleDropdownToggle = (type, index, e) => {
     e.stopPropagation();
@@ -739,6 +773,56 @@ function MainPage() {
     }
   };
 
+  const openEvaluateModal = (idx) => {
+    setCurrentEvalIndex(idx);
+    setShowEvaluationModal(true);
+    setGroundTruth(""); 
+    setTimeout(() => {
+      groundTruthInputRef.current?.focus();
+    }, 100);
+  };
+
+  const evaluateAnswer = async (idx) => {
+    setIsEvaluating(true);
+    setEvaluationResult(null); 
+
+    try {
+      const msg = allMessages[idx];
+
+      if (!msg.id || !msg.chat_id) {
+        throw new Error("Message id or chat_id is missing");
+      }
+
+      const payload = {
+        question: msg.usermessage,
+        context: msg.context,
+        answer: msg.botmessage,
+        ground_truth: groundTruth
+      };
+
+      console.log(payload)
+
+      const res = await fetch(`${BACKEND_URL}/evaluate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to get evaluation");
+      }
+
+      const data = await res.json();
+      setEvaluationResult(data.evaluation);
+    } catch (err) {
+      console.error("Evaluation error:", err);
+      addNotification(err.message || "Error evaluating message.", "error");
+    } finally {
+      setIsEvaluating(false);
+    }
+  };
+
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -861,6 +945,7 @@ function MainPage() {
                   setNewChatName("");
                 }
               }}
+              className="name-chat-input"
             />
             <div className="modal-buttons">
               <button
@@ -970,6 +1055,11 @@ function MainPage() {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={`Search ${searchType === 'chats' ? 'chat messages' : 'files'}...`}
                 autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    setShowSearchModal(false);
+                  }
+                }}
               />
             </div>
             <div className="search-results">
@@ -1028,7 +1118,139 @@ function MainPage() {
           </div>
         </div>
       )}
+      {showEvaluationModal && (
+        <div className="delete-confirm-modal">
+          <div className="modal-content search-modal">
+            {isEvaluating ? (
+              <div className="loading-container">
+                <div className="loading-spinner" />
+                  {loadingMessages[loadingMessageIndex]}
+              </div>
+            ) : evaluationResult ? (
+              <div className="result-container">
+                <input
+                  type="text"
+                  style={{ position: 'absolute', opacity: 0, height: 0, width: 0, pointerEvents: 'none' }}
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      setEvaluationResult(null); 
+                      setGroundTruth("");
+                      setShowEvaluationModal(false);
+                    }
+                  }}
+                />
+                <div className="header">
+                  <h3>Evaluation Result</h3>
+                  <div className="tooltip-container">
+                    <span className="info-icon">?</span>
+                    <div className="tooltip-text">
+                      <strong>Metrics explained:</strong><br /><br />
+                      <strong>Faithfulness</strong>:   Measures the factual accuracy of the generated answer based on the context.<br />
+                       Computed using the <em>question</em>, <em>contexts</em>, and the <em>answer</em>.<br /><br />
+                      <strong>Answer Relevancy</strong>: Measures how relevant the generated answer is to the question.<br />
+                      Computed using the <em>question</em> and the <em>answer</em>.<br />
+                      E.g., if only part of the question is answered, this score is low.<br /><br />
+                      <strong>Context Precision</strong>: Measures the signal-to-noise ratio of the retrieved context.<br />
+                      Computed using the <em>question</em> and the <em>contexts</em>.<br /><br />   
+                      <strong>Context Recall</strong>: Measures if all relevant information required to answer the question was retrieved.<br />
+                      Computed using the <em>ground truth</em> and the <em>contexts</em>.<br />
+                      <strong>This is the only metric that uses human-annotated ground truth.</strong><br /><br />
+                    </div>
+                  </div>
+                </div>
+                <table className="result-table">
+                  <tbody>
+                    {evaluationKeys.map((key) => {
+                      const value = evaluationResult[key];
+                      let valueClass = "";
+                      if (value >= 0.85) valueClass = "score-high";
+                      else if (value >= 0.7) valueClass = "score-medium-high";
+                      else if (value >= 0.5) valueClass = "score-medium";
+                      else if (value >= 0.3) valueClass = "score-medium-low";
+                      else valueClass = "score-low";
 
+                      return (
+                        <tr key={key}>
+                          <td className="result-key">{key}</td>
+                          <td className={`result-value ${valueClass}`}>
+                            {value !== null && value !== undefined ? value : "N/A"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+
+                <div className="modal-buttons">
+                  <button
+                    className="create-button"
+                    onClick={() => {
+                      setEvaluationResult(null); 
+                      setGroundTruth("");
+                    }}
+                  >
+                    Provide answer again
+                  </button>
+                  <button
+                    className="cancel-button"
+                    onClick={() => {
+                      setEvaluationResult(null); 
+                      setGroundTruth("");
+                      setShowEvaluationModal(false);
+                    }}
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <h3>
+                  Provide answer to this question
+                </h3>
+                <div className="search-input-container">
+                  <textarea
+                    ref={groundTruthInputRef}
+                    value={groundTruth}
+                    placeholder="Enter answer"
+                    onChange={(e) => setGroundTruth(e.target.value)}
+                    rows={5}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        evaluateAnswer(currentEvalIndex);
+                      }
+                      if (e.key === "Escape") {
+                        setShowEvaluationModal(false);
+                        setGroundTruth("");
+                      }
+                    }}
+                    className="evaluate-textarea"
+                  />
+                </div>
+                <div className="modal-buttons">
+                  <button
+                    className="create-button"
+                    onClick={() => evaluateAnswer(currentEvalIndex)}
+                  >
+                    Evaluate
+                  </button>
+                  <button
+                    className="cancel-button"
+                    onClick={() => {
+                      setShowEvaluationModal(false);
+                      setGroundTruth("");
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
       <aside className="sidebar">
         <div className="section-header">
           <button className="action-button" onClick={handleCreateChat}>
@@ -1146,7 +1368,8 @@ function MainPage() {
                       }}
                       onKeyDown={async (e) => {
                         if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault()
+                          e.preventDefault();
+                          shouldScrollRef.current = false;
                           await saveEditedMessage(idx);
                         }
                         if (e.key === 'Escape') {
@@ -1208,6 +1431,9 @@ function MainPage() {
                             <div className="action-wrapper">
                               <button
                                 className="evaluate-message-button"
+                                onClick={() =>
+                                  openEvaluateModal(idx)
+                                }
                                 disabled={isLoading}
                               >
                                 <FileCheck size={18} color={isLoading ? "#ccc" : "#555"} />

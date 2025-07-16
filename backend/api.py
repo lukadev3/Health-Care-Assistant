@@ -3,7 +3,7 @@ import shutil
 import asyncio
 from quart import Quart, request, jsonify, Response, send_file
 from quart_cors import cors
-from rag import handle_upload, query_document, load_query_tool, delete_document
+from rag import handle_upload, query_document, load_query_tool, delete_document, evaluate_sample
 from database import (init_db, insert_pdf_file, delete_pdf_file, get_all_files, 
                       insert_chat_message, get_all_chat_messages, insert_chat, get_all_chats, delete_chat, update_chat_name, delete_messages_after)
 from dotenv import load_dotenv
@@ -39,7 +39,6 @@ async def load_tools_in_background():
             print(f"Tool loaded for {filename}")
         except Exception as e:
             print(f"Failed to load tool for {filename}: {e}")
-
 
 # ---------------------------- File Routes ----------------------------
 
@@ -128,6 +127,8 @@ async def delete_pdf():
         return jsonify({"message": f"PDF {filename} deleted successfully!"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
+# ---------------------------- Chat Routes ----------------------------
 
 @app.route("/query", methods=["GET"])
 async def query_pdf():
@@ -156,7 +157,27 @@ async def query_pdf():
     except Exception as e:
         return jsonify({"error": f"An error occurred while generating a response: {str(e)}"}), 500
     
-# ---------------------------- Chat Routes ----------------------------
+@app.route("/evaluate", methods=["POST"])
+async def evaluate_answer():
+    data = await request.get_json()
+    question = data.get("question")
+    context = data.get("context")
+    answer = data.get("answer")
+    ground_truth = data.get("ground_truth", "")
+
+    if not question:
+        return jsonify({"error": "Question is required"}), 400
+    if not isinstance(context, list):
+        return jsonify({"error": "Context must be a list"}), 400
+    if not answer:
+        return jsonify({"error": "Answer is required"}), 400
+
+    try:
+        evaluation = evaluate_sample(question, context, answer, ground_truth)
+        return jsonify({"evaluation": evaluation})
+    except Exception as e:
+        return jsonify({"error": f"An error occurred while generating an evaluation: {str(e)}"}), 500
+
 
 @app.route("/chats", methods=["GET"])
 async def list_chats():

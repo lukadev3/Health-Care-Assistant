@@ -1,5 +1,6 @@
 import os
 import chromadb
+import math
 from llmsherpa.readers import LayoutPDFReader
 from llama_index.core import Document
 from llama_index.core import VectorStoreIndex, StorageContext, SummaryIndex
@@ -200,7 +201,7 @@ def query_document(query: str, tools: list, chat_history: list[tuple[str, str]])
             f"Please try rephrasing your question or ask about a different topic: {e}", []
         )
 
-def evaluate_sample(question: str, context: list[str], answer: str, ground_truth: str, llm, embeddings):
+def evaluate_sample(question: str, context: list[str], answer: str, ground_truth: str):
     """
     Evaluates a single RAG sample using all available RAGAS metrics.
 
@@ -214,6 +215,12 @@ def evaluate_sample(question: str, context: list[str], answer: str, ground_truth
         pd.DataFrame: Evaluation scores for each metric.
     """
 
+    def clean_nan_values(d):
+        return {
+            k: (None if isinstance(v, float) and math.isnan(v) else v)
+            for k, v in d.items()
+        }
+
     data = {
         "question": [question],
         "contexts": [context],
@@ -224,8 +231,8 @@ def evaluate_sample(question: str, context: list[str], answer: str, ground_truth
     dataset = Dataset.from_dict(data)
 
     result = evaluate(
-        llm=LlamaIndexLLMWrapper(llm),
-        embeddings=LlamaIndexEmbeddingsWrapper(embeddings),
+        llm=LlamaIndexLLMWrapper(evaluate_llm),
+        embeddings=LlamaIndexEmbeddingsWrapper(Settings.embed_model),
         dataset = dataset, 
         metrics=[
             context_precision,
@@ -235,6 +242,7 @@ def evaluate_sample(question: str, context: list[str], answer: str, ground_truth
         ],
     )
 
-    return result.to_pandas().T
+    raw_result = result.to_pandas().T.to_dict()[0]
+    return clean_nan_values(raw_result)
 
 

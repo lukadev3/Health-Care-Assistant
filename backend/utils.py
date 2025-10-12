@@ -26,5 +26,5 @@ def make_automerging_index_tool(index: VectorStoreIndex, name: str, description:
     return QueryEngineTool.from_defaults(
         query_engine=query_engine,
         name=f"drug_{name}",
-        description=f"Clinical information about {name}. {description}"
+        description=f"{description}"
     )

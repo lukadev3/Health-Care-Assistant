@@ -3,16 +3,19 @@ import chromadb
 import math
 from llmsherpa.readers import LayoutPDFReader
 from llama_index.core import Document
-from llama_index.core import VectorStoreIndex, StorageContext, SummaryIndex
+from llama_index.core import VectorStoreIndex, StorageContext
 from llama_index.vector_stores.chroma import ChromaVectorStore
 from llama_index.core import Settings
-from llama_index.llms.ollama import Ollama
-from llama_index.embeddings.ollama import OllamaEmbedding
+#from llama_index.llms.ollama import Ollama
+#from llama_index.embeddings.ollama import OllamaEmbedding
 from llama_index.core.node_parser import HierarchicalNodeParser, get_leaf_nodes
 from llama_index.core.query_engine import ToolRetrieverRouterQueryEngine
 from llama_index.core.objects import ObjectIndex
 from llama_index.core.tools import QueryEngineTool
 from llama_index.core import load_index_from_storage
+from llama_index.llms.openai import OpenAI
+from llama_index.embeddings.openai import OpenAIEmbedding
+from llama_index.core.agent.workflow import ReActAgent, ToolCallResult, AgentStream
 from dotenv import load_dotenv
 from utils import make_automerging_index_tool
 from ragas import evaluate
@@ -33,14 +36,25 @@ STORAGE_CONTEXT_PATH = os.getenv("STORAGE_CONTEXT_PATH")
 EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME")
 LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME")
 EVALUATE_MODEL_NAME = os.getenv("EVALUATE_MODEL_NAME")
+EMBEDDING_MODEL_NAME_OPENAI = os.getenv("EMBEDDING_MODEL_NAME_OPENAI")
+LLM_MODEL_NAME_OPENAI = os.getenv("LLM_MODEL_NAME_OPENAI")
+EVALUATE_MODEL_NAME_OPENAI = os.getenv("EVALUATE_MODEL_NAME_OPENAI")
 BASE_URL = os.getenv("BASE_URL")
 LLMSHERPA_API_URL = os.getenv("LLMSHERPA_API_URL")
+API_KEY = os.getenv("API_KEY")
+PROMPT = os.getenv("PROMPT")
 
-Settings.embed_model =OllamaEmbedding(model_name=EMBEDDING_MODEL_NAME, base_url=BASE_URL)
-Settings.llm = Ollama(model=LLM_MODEL_NAME, request_timeout=360, base_url=BASE_URL)
-evaluate_llm = Ollama(model=EVALUATE_MODEL_NAME, request_timeout=360, base_url=BASE_URL)
+#Settings.embed_model = OllamaEmbedding(model_name=EMBEDDING_MODEL_NAME, base_url=BASE_URL)
+#Settings.llm = Ollama(model=LLM_MODEL_NAME, request_timeout=360, base_url=BASE_URL)
+#evaluate_llm = Ollama(model=EVALUATE_MODEL_NAME, request_timeout=360, base_url=BASE_URL)
+
+Settings.embed_model = OpenAIEmbedding(model=EMBEDDING_MODEL_NAME_OPENAI, api_key=API_KEY)
+Settings.llm = OpenAI(model=LLM_MODEL_NAME_OPENAI, api_key=API_KEY)
+evaluate_llm = OpenAI(model=EVALUATE_MODEL_NAME_OPENAI, api_key=API_KEY)
 
 chroma_client = chromadb.PersistentClient(path=CHROMA_DB_PATH)
+
+reader = LayoutPDFReader(LLMSHERPA_API_URL)
 
 def load_query_tool(name: str, description: str) -> QueryEngineTool:
     """
@@ -79,25 +93,19 @@ def handle_upload(file_path: str, name: str) -> tuple[QueryEngineTool, str]:
         ValueError: If there is an error during processing.
     """
     try:
-        reader = LayoutPDFReader(LLMSHERPA_API_URL)
         documents = reader.read_pdf(path_or_url=file_path)
-
         full_text = documents.to_text()
+     
         document = Document(text=full_text)
 
         node_parser = HierarchicalNodeParser.from_defaults(
-            chunk_sizes=[4116, 2058, 512] 
+            chunk_sizes=[2048, 1024, 256] 
         )
 
         all_nodes = node_parser.get_nodes_from_documents([document]) 
         leaf_nodes = get_leaf_nodes(all_nodes)
 
-        chroma_collection = chroma_client.get_or_create_collection(
-            name,
-            metadata={
-                "hnsw:space": "cosine",
-            }
-        )
+        chroma_collection = chroma_client.get_or_create_collection(name)
         vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
         storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
@@ -117,14 +125,13 @@ def handle_upload(file_path: str, name: str) -> tuple[QueryEngineTool, str]:
         storage_context.docstore.add_documents(all_nodes)
         storage_context.persist(persist_dir=f"{STORAGE_CONTEXT_PATH}/{name}")
 
-        summary_text = document.text[:2000]
-        summary_doc = Document(text=summary_text)
-        summary_index = SummaryIndex.from_documents([summary_doc]) 
-        query_engine = summary_index.as_query_engine()
-        description = query_engine.query("Give short summary of this drug.")
-        print(description)
-        description_text = str(description).strip()
-
+        description_text = f"""This document provides comprehensive information about {name}.
+                     It includes details on the intended use, recommended dosage, methods of administration, potential side effects, 
+                     interactions with other drugs, contraindications, precautions, and safety guidelines. The document is intended to serve as a complete 
+                     reference for understanding how {name} should be used, what benefits it offers, and what risks or 
+                     considerations should be kept in mind. Additional information may include storage instructions, 
+                     patient guidance, and clinical notes relevant to {name}."""
+        
         return make_automerging_index_tool(automerging_index, name, description_text), description_text
     except Exception as e:
         error_msg = f"Error processing {name}: {str(e)}"
@@ -140,7 +147,7 @@ def delete_document(name: str):
     """
     chroma_client.delete_collection(name)
 
-def query_document(query: str, tools: list, chat_history: list[tuple[str, str]]) -> tuple[str, list]:
+async def query_document(query: str, tools: list, chat_history: list[tuple[str, str]]) -> tuple[str, list]:
     """
     Run a structured medical query against a set of tools using ToolRetrieverRouterQueryEngine.
 
@@ -152,52 +159,38 @@ def query_document(query: str, tools: list, chat_history: list[tuple[str, str]])
     Returns:
         tuple: (answer string, list of context nodes used)
     """
+
+    agent = ReActAgent(tools=tools, 
+                       llm=Settings.llm, 
+                       system_prompt=PROMPT,
+                       name="MedicalReActAgent", 
+                       description="An agent that answers medical queries using the provided tools only.")
+    
     history_text = "\n".join([f"User: {user}\nAssistant: {assistant}" for user, assistant in chat_history])
-    prompt = (
-        "You are a licensed medical doctor and professional assistant, specialized in pharmacology and drug usage.\n"
-        "You have access to multiple specialized tools, each containing detailed documentation and clinical guidelines for a specific drug.\n"
-        "Your role is to provide precise, evidence-based, and medically accurate advice to patients or users, strictly based on the contents of these tools.\n\n"
-
-        "Important instructions:\n"
-        "- Use ONLY the provided tools to answer the question. Do NOT rely on general knowledge or assumptions.\n"
-        "- When the user asks a question, retrieve and present all directly relevant information from the tools.\n"
-        "- Provide your answer in a clear and structured way, as a real doctor would explain to a patient.\n"
-        "- Be detailed and thorough. If the information covers multiple aspects (e.g., dosage, warnings, age-specific instructions), include each part clearly.\n"
-        "- If prior messages exist, always use that context to understand what the user is referring to.\n\n"
-
-        "If your response includes a table, follow these rules strictly (it is not necessary for every one of your responses to include a table.):\n"
-        "- Use GitHub-Flavored Markdown table syntax.\n"
-        "- All rows must contain the same number of columns.\n"
-        "- Do NOT leave any table cell empty. If a value is shared across multiple rows, repeat it in each row.\n"
-        "- Do NOT merge or span cells — Markdown does not support it.\n"
-        "- Do NOT use HTML tags. Instead, use Markdown line breaks: insert two spaces followed by a newline (e.g. `  \\n`) inside cells where multiple lines are needed.\n"
-        "- Do NOT include bullet points or blank lines between table rows.\n"
-        "- Format the table cleanly. Use `|` to separate each column, and a single `---` row after the headers.\n"
-        "- Do NOT include any extra explanation, notes, or content before or after the table — output the table ONLY.\n\n"
-
-        "Maintain a professional and helpful tone throughout the answer.\n\n"
-
+    query = (
         f"Conversation history:\n{history_text}\n\n"
         f"Current user question:\n{query}\n"
     )
     try:
-        object_index = ObjectIndex.from_objects(
-            tools, index_cls=VectorStoreIndex
-        )        
-        retriever = object_index.as_retriever()
+        handler = agent.run(query)
+        context = []
+        async for ev in handler.stream_events():
+            if isinstance(ev, ToolCallResult):
+                print(f"\nCall {ev.tool_name} with {ev.tool_kwargs}\nReturned: {ev.tool_output}")
+                raw = getattr(ev.tool_output, 'raw_output', None)
+                if raw and hasattr(raw, 'source_nodes'):
+                    for node_score in raw.source_nodes:
+                        node = getattr(node_score, 'node', None)
+                        if node and hasattr(node, 'text'):
+                            context.append(node.text)
+            if isinstance(ev, AgentStream):
+                print(f"{ev.delta}", end="", flush=True)
 
-        router_engine = ToolRetrieverRouterQueryEngine(
-            retriever=retriever,
-        )
-
-        print(f"history: {history_text}, query: {query}")
-        response = router_engine.query(prompt)
-        print(response)
-        context = [node.node.text for node in response.source_nodes]
+        response = await handler
         return str(response), context
     except Exception as e:
         return (
-            "⚠️ I encountered an error processing your request. "
+            "I encountered an error processing your request. "
             f"Please try rephrasing your question or ask about a different topic: {e}", []
         )
 

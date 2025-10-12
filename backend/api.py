@@ -152,7 +152,7 @@ async def query_pdf():
             conversation = (chat['usermessage'], chat['botmessage'])
             chat_history.append(conversation)
     try:
-        response, context = query_document(query, tools, chat_history)
+        response, context = await query_document(query, tools, chat_history)
         return jsonify({"response": response, "context": context})
     except Exception as e:
         return jsonify({"error": f"An error occurred while generating a response: {str(e)}"}), 500

@@ -9,7 +9,7 @@ from llama_index.core import Settings
 #from llama_index.llms.ollama import Ollama
 #from llama_index.embeddings.ollama import OllamaEmbedding
 from llama_index.core.node_parser import HierarchicalNodeParser, get_leaf_nodes
-from llama_index.core.query_engine import ToolRetrieverRouterQueryEngine
+from llama_index.core.query_engine import ToolRetrieverRouterQueryEngine, SubQuestionQueryEngine
 from llama_index.core.objects import ObjectIndex
 from llama_index.core.tools import QueryEngineTool
 from llama_index.core import load_index_from_storage
@@ -95,7 +95,11 @@ def handle_upload(file_path: str, name: str) -> tuple[QueryEngineTool, str]:
     try:
         documents = reader.read_pdf(path_or_url=file_path)
         full_text = documents.to_text()
-     
+
+        putanja = 'documents.txt'
+        with open(putanja, 'w', encoding='utf-8') as f:
+             f.write(full_text)          
+
         document = Document(text=full_text)
 
         node_parser = HierarchicalNodeParser.from_defaults(

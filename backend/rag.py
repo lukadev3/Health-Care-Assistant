@@ -6,11 +6,7 @@ from llama_index.core import Document
 from llama_index.core import VectorStoreIndex, StorageContext
 from llama_index.vector_stores.chroma import ChromaVectorStore
 from llama_index.core import Settings
-#from llama_index.llms.ollama import Ollama
-#from llama_index.embeddings.ollama import OllamaEmbedding
 from llama_index.core.node_parser import HierarchicalNodeParser, get_leaf_nodes
-from llama_index.core.query_engine import ToolRetrieverRouterQueryEngine, SubQuestionQueryEngine
-from llama_index.core.objects import ObjectIndex
 from llama_index.core.tools import QueryEngineTool
 from llama_index.core import load_index_from_storage
 from llama_index.llms.openai import OpenAI
@@ -43,10 +39,6 @@ BASE_URL = os.getenv("BASE_URL")
 LLMSHERPA_API_URL = os.getenv("LLMSHERPA_API_URL")
 API_KEY = os.getenv("API_KEY")
 PROMPT = os.getenv("PROMPT")
-
-#Settings.embed_model = OllamaEmbedding(model_name=EMBEDDING_MODEL_NAME, base_url=BASE_URL)
-#Settings.llm = Ollama(model=LLM_MODEL_NAME, request_timeout=360, base_url=BASE_URL)
-#evaluate_llm = Ollama(model=EVALUATE_MODEL_NAME, request_timeout=360, base_url=BASE_URL)
 
 Settings.embed_model = OpenAIEmbedding(model=EMBEDDING_MODEL_NAME_OPENAI, api_key=API_KEY)
 Settings.llm = OpenAI(model=LLM_MODEL_NAME_OPENAI, api_key=API_KEY)
@@ -95,11 +87,7 @@ def handle_upload(file_path: str, name: str) -> tuple[QueryEngineTool, str]:
     try:
         documents = reader.read_pdf(path_or_url=file_path)
         full_text = documents.to_text()
-
-        putanja = 'documents.txt'
-        with open(putanja, 'w', encoding='utf-8') as f:
-             f.write(full_text)          
-
+        
         document = Document(text=full_text)
 
         node_parser = HierarchicalNodeParser.from_defaults(
@@ -191,6 +179,7 @@ async def query_document(query: str, tools: list, chat_history: list[tuple[str, 
                 print(f"{ev.delta}", end="", flush=True)
 
         response = await handler
+        print(context)
         return str(response), context
     except Exception as e:
         return (

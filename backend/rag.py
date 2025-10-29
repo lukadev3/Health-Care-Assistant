@@ -201,12 +201,6 @@ def evaluate_sample(question: str, context: list[str], answer: str, ground_truth
         pd.DataFrame: Evaluation scores for each metric.
     """
 
-    def clean_nan_values(d):
-        return {
-            k: (None if isinstance(v, float) and math.isnan(v) else v)
-            for k, v in d.items()
-        }
-
     data = {
         "question": [question],
         "contexts": [context],
@@ -229,6 +223,4 @@ def evaluate_sample(question: str, context: list[str], answer: str, ground_truth
     )
 
     raw_result = result.to_pandas().T.to_dict()[0]
-    return clean_nan_values(raw_result)
-
-
+    return raw_result

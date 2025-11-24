@@ -1,6 +1,5 @@
 import os
 import chromadb
-import math
 from llmsherpa.readers import LayoutPDFReader
 from llama_index.core import Document
 from llama_index.core import VectorStoreIndex, StorageContext
@@ -11,7 +10,7 @@ from llama_index.core.tools import QueryEngineTool
 from llama_index.core import load_index_from_storage
 from llama_index.llms.openai import OpenAI
 from llama_index.embeddings.openai import OpenAIEmbedding
-from llama_index.core.agent.workflow import ReActAgent, ToolCallResult, AgentStream
+from llama_index.core.agent.workflow import FunctionAgent, ToolCallResult, AgentStream
 from dotenv import load_dotenv
 from utils import make_automerging_index_tool
 from ragas import evaluate
@@ -47,6 +46,12 @@ evaluate_llm = OpenAI(model=EVALUATE_MODEL_NAME_OPENAI, api_key=API_KEY)
 chroma_client = chromadb.PersistentClient(path=CHROMA_DB_PATH)
 
 reader = LayoutPDFReader(LLMSHERPA_API_URL)
+
+agent = FunctionAgent(tools=[], 
+                    llm=Settings.llm, 
+                    system_prompt=PROMPT,
+                    name="MedicalReActAgent", 
+                    description="An agent that answers medical queries using the provided tools only.")
 
 def load_query_tool(name: str, description: str) -> QueryEngineTool:
     """
@@ -150,14 +155,8 @@ async def query_document(query: str, tools: list, chat_history: list[tuple[str, 
 
     Returns:
         tuple: (answer string, list of context nodes used)
-    """
-
-    agent = ReActAgent(tools=tools, 
-                       llm=Settings.llm, 
-                       system_prompt=PROMPT,
-                       name="MedicalReActAgent", 
-                       description="An agent that answers medical queries using the provided tools only.")
-    
+    """    
+    agent.tools = tools
     history_text = "\n".join([f"User: {user}\nAssistant: {assistant}" for user, assistant in chat_history])
     query = (
         f"Conversation history:\n{history_text}\n\n"

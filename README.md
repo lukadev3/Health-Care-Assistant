@@ -50,7 +50,7 @@ Response Evaluation:
 Run the following commands to pull and start the nlm-ingestor Docker image (used for document processing):
 ```
 docker pull ghcr.io/nlmatics/nlm-ingestor:latest
-docker run -p 5010:5001 ghcr.io/nlmatics/nlm-ingestor:latest-<version>
+docker run -p 5010:5001 ghcr.io/nlmatics/nlm-ingestor:latest
 ```
 ###  3. Configure Environment Variables
 
